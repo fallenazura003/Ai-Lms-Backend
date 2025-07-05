@@ -4,10 +4,11 @@ import com.forsakenecho.learning_management_system.jwt.JwtFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod; // ✅ Thêm import này
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
-import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity; // ✅ Thêm import này
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -23,7 +24,7 @@ import java.util.List;
 
 @Configuration
 @EnableWebSecurity
-@EnableMethodSecurity // ✅ THÊM ANNOTATION NÀY
+@EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
 
@@ -37,26 +38,28 @@ public class SecurityConfig {
                         .configurationSource(request -> {
                             var config = new org.springframework.web.cors.CorsConfiguration();
                             config.setAllowedOrigins(List.of("http://localhost:3000"));
-                            config.setAllowedMethods(List.of("GET", "POST", "PUT","PATCH", "DELETE", "OPTIONS"));
+                            config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
                             config.setAllowedHeaders(List.of("*"));
                             config.setAllowCredentials(true);
+                            config.setMaxAge(3600L);
                             return config;
                         })
                 )
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(authorizeRequests -> authorizeRequests
+                        // ✅ RẤT QUAN TRỌNG: Cho phép tất cả các yêu cầu OPTIONS đi qua mà không cần xác thực
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll() // Thêm dòng này
+
                         .requestMatchers("/api/auth/**").permitAll()
-                        // ✅ Đảm bảo các quy tắc cụ thể hơn nằm trên các quy tắc tổng quát hơn
-                        // Ví dụ: nếu có /api/admin/public, nó phải nằm trên /api/admin/**
-                        .requestMatchers("/api/teacher/courses/generate").permitAll() // Cho phép AI tạo khóa học mà không cần xác thực
-                        .requestMatchers("/api/teacher/ai/generate-lesson").permitAll() // Cho phép AI sinh bài học mà không cần xác thực
+                        .requestMatchers("/api/teacher/courses/generate").permitAll()
+                        .requestMatchers("/api/teacher/ai/generate-lesson").permitAll()
 
-                        .requestMatchers("/api/admin/**").hasRole("ADMIN") // Yêu cầu quyền ADMIN cho admin API
-                        .requestMatchers("/api/teacher/**").hasRole("TEACHER") // Yêu cầu quyền TEACHER cho teacher API
-                        .requestMatchers("/api/student/**").hasRole("STUDENT") // Yêu cầu quyền STUDENT cho student API
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/api/teacher/**").hasRole("TEACHER")
+                        .requestMatchers("/api/student/**").hasRole("STUDENT")
 
-                        .requestMatchers("/uploads/**").permitAll() // Cho phép truy cập ảnh upload
-                        .anyRequest().authenticated() // Mọi request khác đều phải xác thực
+                        .requestMatchers("/uploads/**").permitAll()
+                        .anyRequest().authenticated()
                 )
                 .sessionManagement(sess ->
                         sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -70,12 +73,10 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
-
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration config) throws Exception {
         return config.getAuthenticationManager();
     }
-
 
     @Bean
     public DaoAuthenticationProvider authenticationProvider() {

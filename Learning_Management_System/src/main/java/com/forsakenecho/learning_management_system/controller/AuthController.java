@@ -65,7 +65,6 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest loginRequest) throws Exception {
-
         authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(loginRequest.getEmail(), loginRequest.getPassword())
         );
@@ -73,7 +72,13 @@ public class AuthController {
         User user = userRepository.findByEmail(loginRequest.getEmail()).orElseThrow();
         String token = jwtUtil.generateToken(user);
 
-        return ResponseEntity.ok(new AuthResponse(token, user.getRole().name(),user.getStatus().name()));
+        // ✅ Thêm userId vào response
+        return ResponseEntity.ok(new AuthResponse(
+                token,
+                user.getRole().name(),
+                user.getStatus().name(),
+                user.getId().toString() // gửi UUID dưới dạng chuỗi
+        ));
     }
 
     @PostMapping("/logout")
