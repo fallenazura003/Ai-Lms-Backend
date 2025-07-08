@@ -231,4 +231,16 @@ public class TeacherController {
                 .build());
         return ResponseEntity.ok("Visibility updated");
     }
+
+    @GetMapping("/courses/{courseId}/preview")
+    public ResponseEntity<CourseResponse> getCoursePreview(
+            @PathVariable UUID courseId,
+            Authentication authentication) {
+
+        User teacher = getCurrentUser(authentication);
+
+        Course course = courseService.getCoursePreviewByTeacher(courseId, teacher.getId());
+
+        return ResponseEntity.ok(CourseResponse.from(course));
+    }
 }
