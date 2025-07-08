@@ -53,6 +53,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/teacher/courses/generate").permitAll()
                         .requestMatchers("/api/teacher/ai/generate-lesson").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/student/courses/{courseId}/comments").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/student/courses/{courseId}/rating/average").permitAll()
+
 
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/teacher/**").hasRole("TEACHER")

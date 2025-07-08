@@ -157,4 +157,16 @@ public class CourseService {
         course.setVisible(!course.isVisible());
         courseRepository.save(course);
     }
+
+    public Course getCoursePreviewByTeacher(UUID courseId, UUID teacherId) {
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy khóa học."));
+
+        // Chỉ cho phép xem nếu người gọi là giáo viên tạo khóa học
+        if (!course.getCreator().getId().equals(teacherId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Bạn không có quyền xem trước khóa học này.");
+        }
+
+        return course;
+    }
 }

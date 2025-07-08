@@ -19,15 +19,8 @@ public class StudentLessonController {
 
     private final LessonService lessonService;
 
-    /**
-     * Lấy danh sách bài học của một khóa học cho học sinh.
-     * Chỉ những học sinh đã được xác thực mới có thể truy cập.
-     *
-     * @param courseId ID của khóa học.
-     * @return ResponseEntity chứa danh sách LessonResponse của các bài học.
-     */
     @GetMapping
-    @PreAuthorize("hasRole('STUDENT')") // Chỉ cho phép người dùng có ROLE_STUDENT truy cập
+    @PreAuthorize("hasAnyRole('STUDENT', 'TEACHER')") // Chỉ cho phép người dùng có ROLE_STUDENT truy cập
     public ResponseEntity<List<LessonResponse>> getLessonsByCourseIdForStudent(@PathVariable UUID courseId) {
         // Sử dụng lại service đã có để lấy danh sách bài học
         List<LessonResponse> lessons = lessonService.getLessonsByCourseId(courseId);

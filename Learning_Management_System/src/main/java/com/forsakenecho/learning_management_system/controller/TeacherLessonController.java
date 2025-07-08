@@ -1,16 +1,20 @@
 package com.forsakenecho.learning_management_system.controller;
 
+import com.forsakenecho.learning_management_system.dto.CourseResponse;
 import com.forsakenecho.learning_management_system.dto.GenerateLessonResponse;
 import com.forsakenecho.learning_management_system.dto.LessonRequest;
 import com.forsakenecho.learning_management_system.dto.LessonResponse; // ✅ Import LessonResponse
 import com.forsakenecho.learning_management_system.entity.Lesson; // Giữ lại nếu cần cho việc map nội bộ hoặc logging
+import com.forsakenecho.learning_management_system.entity.User;
 import com.forsakenecho.learning_management_system.service.AiLessonGeneratorService;
+import com.forsakenecho.learning_management_system.service.CourseService;
 import com.forsakenecho.learning_management_system.service.LessonService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
 
@@ -24,6 +28,7 @@ import java.util.UUID;
 public class TeacherLessonController {
     private final LessonService lessonService;
     private final AiLessonGeneratorService  aiLessonGeneratorService;
+    private final CourseService courseService;
 
     // tạo mới lesson
     @PostMapping
