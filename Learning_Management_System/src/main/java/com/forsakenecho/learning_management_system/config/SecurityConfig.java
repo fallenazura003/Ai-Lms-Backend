@@ -51,9 +51,15 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll() // Thêm dòng này
 
                         .requestMatchers("/api/auth/**").permitAll()
+
                         .requestMatchers("/api/teacher/courses/generate").permitAll()
                         .requestMatchers("/api/teacher/ai/generate-lesson").permitAll()
+
                         .requestMatchers(HttpMethod.GET, "/api/student/courses/{courseId}/comments").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/student/courses/{courseId}/comments").permitAll()
+                        .requestMatchers(HttpMethod.PUT, "/api/student/courses/{courseId}/comments/{commentId}").permitAll()
+                        .requestMatchers(HttpMethod.DELETE, "/api/student/courses/{courseId}/comments/{commentId}").permitAll()
+
                         .requestMatchers(HttpMethod.GET, "/api/student/courses/{courseId}/rating/average").permitAll()
 
 

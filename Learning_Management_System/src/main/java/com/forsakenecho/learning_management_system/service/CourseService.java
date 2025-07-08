@@ -1,6 +1,7 @@
 package com.forsakenecho.learning_management_system.service;
 
 import com.forsakenecho.learning_management_system.dto.CourseResponse;
+import com.forsakenecho.learning_management_system.dto.CourseSummaryDTO;
 import com.forsakenecho.learning_management_system.dto.CreateCourseRequest;
 import com.forsakenecho.learning_management_system.entity.Course;
 import com.forsakenecho.learning_management_system.entity.CourseManagement;
@@ -168,5 +169,11 @@ public class CourseService {
         }
 
         return course;
+    }
+
+    // ✅ Cập nhật phương thức searchCourses để nhận Pageable và trả về Page<CourseSummaryDTO>
+    public Page<CourseSummaryDTO> searchCourses(String keyword, Pageable pageable) {
+        Page<Course> coursesPage = courseRepository.findVisibleCoursesByKeyword(keyword, pageable);
+        return coursesPage.map(CourseSummaryDTO::fromEntity); // Chuyển đổi Page of Course sang Page of CourseSummaryDTO
     }
 }
