@@ -1,7 +1,7 @@
+// CourseService.java
 package com.forsakenecho.learning_management_system.service;
 
 import com.forsakenecho.learning_management_system.dto.CourseResponse;
-import com.forsakenecho.learning_management_system.dto.CourseSummaryDTO;
 import com.forsakenecho.learning_management_system.dto.CreateCourseRequest;
 import com.forsakenecho.learning_management_system.entity.Course;
 import com.forsakenecho.learning_management_system.entity.CourseManagement;
@@ -10,10 +10,11 @@ import com.forsakenecho.learning_management_system.enums.CourseAccessType;
 import com.forsakenecho.learning_management_system.enums.Role;
 import com.forsakenecho.learning_management_system.repository.CourseManagementRepository;
 import com.forsakenecho.learning_management_system.repository.CourseRepository;
-import com.forsakenecho.learning_management_system.repository.UserRepository; // ✅ Thêm import này
+import com.forsakenecho.learning_management_system.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,7 +32,38 @@ public class CourseService {
     private final CourseManagementRepository courseManagementRepository;
     private final CourseRepository courseRepository;
     private final FileStorageService fileStorageService;
-    private final UserRepository userRepository; // ✅ Inject UserRepository để kiểm tra vai trò
+    private final UserRepository userRepository;
+
+    public Course createCourse(CreateCourseRequest request, User creator, MultipartFile imageFile, String externalImageUrl) throws IOException {
+        Course newCourse = Course.builder()
+                .title(request.getTitle())
+                .description(request.getDescription())
+                .price(request.getPrice())
+                .category(request.getCategory())
+                .creator(creator)
+                .visible(false) // Mặc định là ẩn khi mới tạo
+                .build();
+
+        String imageUrl = null;
+        if (imageFile != null && !imageFile.isEmpty()) {
+            imageUrl = fileStorageService.save(imageFile);
+        } else if (externalImageUrl != null && !externalImageUrl.trim().isEmpty()) {
+            imageUrl = externalImageUrl;
+        }
+        newCourse.setImageUrl(imageUrl);
+
+        Course savedCourse = courseRepository.save(newCourse);
+
+        // Tự động gán quyền CREATED cho người tạo khóa học
+        CourseManagement courseManagement = CourseManagement.builder()
+                .user(creator)
+                .course(savedCourse)
+                .accessType(CourseAccessType.CREATED)
+                .build();
+        courseManagementRepository.save(courseManagement);
+
+        return savedCourse;
+    }
 
     public List<CourseResponse> getCoursesByUserAndAccessType(UUID userId, CourseAccessType accessType){
         // Logic này có vẻ không được dùng với phân trang, cần xem xét lại mục đích
@@ -53,14 +85,17 @@ public class CourseService {
                 .collect(Collectors.toList());
     }
 
-    // ✅ PHƯƠNG THỨC NÀY ĐƯỢC SỬ DỤNG CHO DANH SÁCH KHÓA HỌC ĐÃ MUA CÓ PHÂN TRANG
+    // PHƯƠNG THỨC NÀY ĐƯỢC SỬ DỤNG CHO DANH SÁCH KHÓA HỌC ĐÃ MUA CÓ PHÂN TRANG
     public Page<Course> getCoursesByUserAndAccessType(UUID userId, CourseAccessType type, Pageable pageable) {
         if (type == CourseAccessType.PURCHASED) {
-            // ✅ Sử dụng phương thức mới chỉ lấy các khóa học đã mua VÀ visible
+            // Sử dụng phương thức mới chỉ lấy các khóa học đã mua VÀ visible
+            // Lưu ý: findByUserIdAndAccessTypeAndCourseVisibleTrue cần được định nghĩa trong CourseManagementRepository
+            // Hoặc bạn có thể dùng Specification ở đây nếu muốn linh hoạt hơn
             return courseManagementRepository.findByUserIdAndAccessTypeAndCourseVisibleTrue(userId, type, pageable)
                     .map(CourseManagement::getCourse);
         } else if (type == CourseAccessType.CREATED) {
             // Đối với khóa học do giáo viên tạo, họ phải luôn thấy tất cả khóa học của mình (visible hoặc ẩn)
+            // Phương thức này sẽ được thay thế bằng getCreatedCoursesForTeacher nếu có category filter
             return courseRepository.findByCreatorId(userId, pageable);
         }
         // Đối với các loại truy cập khác (nếu có), bạn có thể thêm logic tương ứng
@@ -68,6 +103,7 @@ public class CourseService {
         return Page.empty(pageable);
     }
 
+    // Phương thức này có thể không cần thiết nữa nếu dùng getExploreCoursesForStudent
     public Page<Course> getVisibleCoursesNotPurchased(UUID studentId, Pageable pageable) {
         List<UUID> purchasedIds = courseManagementRepository
                 .findByUserIdAndAccessType(studentId, CourseAccessType.PURCHASED)
@@ -171,13 +207,84 @@ public class CourseService {
         return course;
     }
 
-    // ✅ Cập nhật phương thức searchCourses để nhận Pageable và trả về Page<CourseResponse>
-    public Page<CourseResponse> searchCourses(String keyword, Pageable pageable) {
-        Page<Course> coursesPage = courseRepository.findVisibleCoursesByKeyword(keyword, pageable);
-        return coursesPage.map(CourseResponse::from); // Chuyển đổi Page of Course sang Page of CourseResponse
+    // Cập nhật phương thức searchCourses (vẫn dùng cho Public search)
+    public Page<CourseResponse> searchCourses(String keyword, String category, Pageable pageable) {
+        Specification<Course> spec = Specification.where(null); // Bắt đầu với một Specification rỗng
+
+        // 1. Luôn lọc theo visible = true
+        spec = spec.and((root, query, cb) -> cb.isTrue(root.get("visible")));
+
+        // 2. Lọc theo keyword (tìm kiếm trong title hoặc description)
+        if (keyword != null && !keyword.trim().isEmpty()) {
+            String lowerCaseKeyword = "%" + keyword.toLowerCase() + "%";
+            spec = spec.and((root, query, cb) ->
+                    cb.or(
+                            cb.like(cb.lower(root.get("title")), lowerCaseKeyword),
+                            cb.like(cb.lower(root.get("description")), lowerCaseKeyword)
+                    )
+            );
+        }
+
+        // 3. Lọc theo category
+        if (category != null && !category.trim().isEmpty()) {
+            spec = spec.and((root, query, cb) -> cb.equal(root.get("category"), category));
+        }
+
+        Page<Course> coursesPage = courseRepository.findAll(spec, pageable); // Sử dụng findAll với Specification
+        return coursesPage.map(CourseResponse::from);
     }
 
-    // ✅ PHƯƠNG THỨC MỚI: Lấy ID của các khóa học đã mua bởi một sinh viên
+    // PHƯƠNG THỨC MỚI: Lấy các khóa học để sinh viên "khám phá" (chưa mua, visible, có thể lọc theo category)
+    public Page<CourseResponse> getExploreCoursesForStudent(UUID studentId, String category, Pageable pageable) {
+        // Lấy danh sách ID các khóa học đã mua bởi sinh viên
+        List<UUID> purchasedCourseIds = courseManagementRepository
+                .findByUserIdAndAccessType(studentId, CourseAccessType.PURCHASED)
+                .stream()
+                .map(cm -> cm.getCourse().getId())
+                .collect(Collectors.toList());
+
+        Specification<Course> spec = Specification.where(null);
+
+        // 1. Luôn lọc các khóa học visible
+        spec = spec.and((root, query, cb) -> cb.isTrue(root.get("visible")));
+
+        // 2. Loại trừ các khóa học đã mua
+        if (!purchasedCourseIds.isEmpty()) {
+            spec = spec.and((root, query, cb) -> root.get("id").in(purchasedCourseIds).not());
+        }
+
+        // 3. Lọc theo category nếu có
+        if (category != null && !category.trim().isEmpty()) {
+            spec = spec.and((root, query, cb) -> cb.equal(root.get("category"), category));
+        }
+
+        Page<Course> coursesPage = courseRepository.findAll(spec, pageable);
+        return coursesPage.map(CourseResponse::from);
+    }
+
+
+    // PHƯƠNG THỨC MỚI: Lấy các khóa học đã tạo bởi giáo viên (có thể lọc theo category)
+    public Page<CourseResponse> getCreatedCoursesForTeacher(UUID teacherId, String category, Pageable pageable) {
+        Specification<Course> spec = Specification.where(null);
+
+        // 1. Lọc theo người tạo (giáo viên)
+        spec = spec.and((root, query, cb) -> cb.equal(root.get("creator").get("id"), teacherId));
+
+        // 2. Lọc theo category nếu có (Giáo viên muốn thấy tất cả khóa học của họ, ẩn hay không ẩn, chỉ lọc theo category)
+        if (category != null && !category.trim().isEmpty()) {
+            spec = spec.and((root, query, cb) -> cb.equal(root.get("category"), category));
+        }
+
+        Page<Course> coursesPage = courseRepository.findAll(spec, pageable);
+        return coursesPage.map(CourseResponse::from);
+    }
+
+    // Phương thức để lấy tất cả các danh mục duy nhất
+    public List<String> getAllDistinctCategories() {
+        return courseRepository.findDistinctCategories();
+    }
+
+    // PHƯƠNG THỨC MỚI: Lấy ID của các khóa học đã mua bởi một sinh viên
     public List<UUID> getPurchasedCourseIds(UUID studentId) {
         return courseManagementRepository.findByUserIdAndAccessType(studentId, CourseAccessType.PURCHASED)
                 .stream()
@@ -185,4 +292,12 @@ public class CourseService {
                 .collect(Collectors.toList());
     }
 
+    // Ví dụ về phương thức tính rating (nếu bạn có)
+    public double getAverageRatingForCourse(UUID courseId) {
+        // Giả định bạn có ReviewRepository và một cách để lấy đánh giá
+        // Ví dụ đơn giản:
+        // List<Review> reviews = reviewRepository.findByCourseId(courseId);
+        // return reviews.stream().mapToDouble(Review::getRating).average().orElse(0.0);
+        return 4.5; // Thay thế bằng logic thực tế của bạn
+    }
 }
