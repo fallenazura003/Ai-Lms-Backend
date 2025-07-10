@@ -1,3 +1,4 @@
+// TeacherController.java
 package com.forsakenecho.learning_management_system.controller;
 
 import com.forsakenecho.learning_management_system.dto.*;
@@ -7,13 +8,13 @@ import com.forsakenecho.learning_management_system.service.FileStorageService;
 
 import com.forsakenecho.learning_management_system.entity.Course;
 import com.forsakenecho.learning_management_system.entity.CourseManagement;
-import com.forsakenecho.learning_management_system.entity.Event; // ✅ Import Event
+import com.forsakenecho.learning_management_system.entity.Event;
 import com.forsakenecho.learning_management_system.entity.User;
 import com.forsakenecho.learning_management_system.enums.CourseAccessType;
 
 import com.forsakenecho.learning_management_system.repository.CourseManagementRepository;
 import com.forsakenecho.learning_management_system.repository.CourseRepository;
-import com.forsakenecho.learning_management_system.repository.EventRepository; // ✅ Import EventRepository
+import com.forsakenecho.learning_management_system.repository.EventRepository;
 import com.forsakenecho.learning_management_system.service.CourseService;
 
 
@@ -29,6 +30,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Mono;
 
 import java.io.IOException;
@@ -40,7 +42,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/teacher")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('TEACHER')") // ✅ Đặt PreAuthorize ở cấp class để áp dụng cho tất cả methods
+@PreAuthorize("hasRole('TEACHER')") // Đặt PreAuthorize ở cấp class để áp dụng cho tất cả methods
 public class TeacherController {
 
     private final CourseService courseService;
@@ -48,7 +50,7 @@ public class TeacherController {
     private final CourseManagementRepository courseManagementRepository;
     private final FileStorageService fileStorageService;
     private final AiCourseGeneratorService  aiCourseGeneratorService;
-    private final EventRepository eventRepository; // ✅ Inject EventRepository
+    private final EventRepository eventRepository;
 
     // Helper method to get current user
     private User getCurrentUser(Authentication authentication) {
@@ -57,20 +59,21 @@ public class TeacherController {
 
     // API lấy danh sách khóa học do giáo viên tạo
     @GetMapping("/courses")
-    public ResponseEntity<?> getCreatedCourses(
+    public ResponseEntity<Page<CourseResponse>> getCreatedCourses(
             Authentication authentication,
+            @RequestParam(value = "category", required = false) String category, // ✅ Thêm category
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "8") int size) {
         User user = getCurrentUser(authentication);
         Pageable pageable = PageRequest.of(page, size);
-        Page<Course> courses = courseService.getCoursesByUserAndAccessType(user.getId(), CourseAccessType.CREATED, pageable);
-        Page<CourseResponse> response = courses.map(CourseResponse::from);
+        // ✅ Gọi phương thức mới trong CourseService để lọc created courses
+        Page<CourseResponse> response = courseService.getCreatedCoursesForTeacher(user.getId(), category, pageable);
         return ResponseEntity.ok(response);
     }
 
     // API tạo khóa học
     @PostMapping(value = "/courses", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<?> createCourse(
+    public ResponseEntity<CourseResponse> createCourse(
             @RequestParam(value = "title", required = false) String title,
             @RequestParam(value = "description", required = false) String description,
             @RequestParam(value = "price", required = false) Double price,
@@ -106,7 +109,7 @@ public class TeacherController {
         if (title == null || title.trim().isEmpty() ||
                 description == null || description.trim().isEmpty() ||
                 price == null || category == null) {
-            return ResponseEntity.badRequest().body("Thiếu thông tin bắt buộc để tạo khóa học (title, description, price, category).");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Thiếu thông tin bắt buộc để tạo khóa học (title, description, price, category).");
         }
 
         Course course = Course.builder()
@@ -127,7 +130,7 @@ public class TeacherController {
                 .accessType(CourseAccessType.CREATED)
                 .build());
 
-        // ✅ Ghi log Event
+        // Ghi log Event
         eventRepository.save(Event.builder()
                 .action("Giáo viên " + teacher.getName() + " đã tạo khóa học mới: " + course.getTitle())
                 .performedBy(teacher.getName())
@@ -148,7 +151,7 @@ public class TeacherController {
         }
         return aiCourseGeneratorService.generate(idea)
                 .doOnSuccess(response -> {
-                    // ✅ Ghi log Event khi AI tạo nội dung
+                    // Ghi log Event khi AI tạo nội dung
                     eventRepository.save(Event.builder()
                             .action("Giáo viên " + teacher.getName() + " đã yêu cầu AI sinh nội dung khóa học cho ý tưởng: " + idea)
                             .performedBy(teacher.getName())
@@ -187,7 +190,7 @@ public class TeacherController {
 
         Course updatedCourse = courseService.updateCourse(courseId, updateRequest, teacher, imageFile, externalImageUrl);
 
-        // ✅ Ghi log Event
+        // Ghi log Event
         eventRepository.save(Event.builder()
                 .action("Giáo viên " + teacher.getName() + " đã cập nhật khóa học: " + updatedCourse.getTitle())
                 .performedBy(teacher.getName())
@@ -205,7 +208,7 @@ public class TeacherController {
         User teacher = getCurrentUser(authentication);
         courseService.deleteCourse(courseId, teacher.getId());
 
-        // ✅ Ghi log Event
+        // Ghi log Event
         eventRepository.save(Event.builder()
                 .action("Giáo viên " + teacher.getName() + " đã xóa khóa học với ID: " + courseId)
                 .performedBy(teacher.getName())
@@ -215,14 +218,14 @@ public class TeacherController {
         return ResponseEntity.noContent().build(); // 204 No Content
     }
 
-    // ✅ ENDPOINT MỚI: Toggle Course Visibility cho Teacher
+    // ENDPOINT MỚI: Toggle Course Visibility cho Teacher
     @PatchMapping("/courses/{id}/toggle-visibility")
-    public ResponseEntity<?> toggleCourseVisibility(@PathVariable UUID id, Authentication authentication) {
+    public ResponseEntity<String> toggleCourseVisibility(@PathVariable UUID id, Authentication authentication) {
         User currentUser = getCurrentUser(authentication);
         courseService.toggleCourseVisibility(id, currentUser.getId()); // Gọi service
 
         // Lấy lại course để ghi log chính xác sau khi đã cập nhật
-        Course course = courseRepository.findById(id).orElseThrow();
+        Course course = courseRepository.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Course not found"));
 
         eventRepository.save(Event.builder()
                 .action("Giáo viên " + currentUser.getName() + " đã cập nhật trạng thái hiển thị khóa học: " + course.getTitle() + " thành " + course.isVisible())
