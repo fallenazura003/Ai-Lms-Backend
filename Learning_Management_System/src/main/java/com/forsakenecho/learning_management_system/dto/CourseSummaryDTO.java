@@ -21,6 +21,7 @@ public class CourseSummaryDTO {
     private Double price;
     private String createdBy;
     private LocalDateTime createdAt;
+    private boolean visible;
 
     public static CourseSummaryDTO fromEntity(Course course) {
         return CourseSummaryDTO.builder()
@@ -31,6 +32,7 @@ public class CourseSummaryDTO {
                 .imageUrl(course.getImageUrl())
                 .createdBy(course.getCreator().getName())
                 .createdAt(course.getCreatedAt())
+                .visible(course.isVisible())
                 .build();
     }
 }

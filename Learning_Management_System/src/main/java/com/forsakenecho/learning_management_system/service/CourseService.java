@@ -171,9 +171,18 @@ public class CourseService {
         return course;
     }
 
-    // ✅ Cập nhật phương thức searchCourses để nhận Pageable và trả về Page<CourseSummaryDTO>
-    public Page<CourseSummaryDTO> searchCourses(String keyword, Pageable pageable) {
+    // ✅ Cập nhật phương thức searchCourses để nhận Pageable và trả về Page<CourseResponse>
+    public Page<CourseResponse> searchCourses(String keyword, Pageable pageable) {
         Page<Course> coursesPage = courseRepository.findVisibleCoursesByKeyword(keyword, pageable);
-        return coursesPage.map(CourseSummaryDTO::fromEntity); // Chuyển đổi Page of Course sang Page of CourseSummaryDTO
+        return coursesPage.map(CourseResponse::from); // Chuyển đổi Page of Course sang Page of CourseResponse
     }
+
+    // ✅ PHƯƠNG THỨC MỚI: Lấy ID của các khóa học đã mua bởi một sinh viên
+    public List<UUID> getPurchasedCourseIds(UUID studentId) {
+        return courseManagementRepository.findByUserIdAndAccessType(studentId, CourseAccessType.PURCHASED)
+                .stream()
+                .map(cm -> cm.getCourse().getId())
+                .collect(Collectors.toList());
+    }
+
 }
