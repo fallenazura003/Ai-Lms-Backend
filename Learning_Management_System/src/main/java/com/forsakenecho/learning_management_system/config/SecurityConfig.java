@@ -60,6 +60,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PUT, "/api/student/courses/{courseId}/comments/{commentId}").permitAll()
                         .requestMatchers(HttpMethod.DELETE, "/api/student/courses/{courseId}/comments/{commentId}").permitAll()
 
+                        .requestMatchers(HttpMethod.GET, "/api/student/courses/purchased-ids/{courseId}").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/student/courses/{courseId}/rating/average").permitAll()
 
 
