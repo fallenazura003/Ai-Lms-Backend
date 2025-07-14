@@ -45,4 +45,5 @@ public interface CourseManagementRepository extends JpaRepository<CourseManageme
     @Query("SELECT cm FROM CourseManagement cm WHERE cm.course.id = :courseId AND cm.accessType = 'PURCHASED'")
     List<CourseManagement> findBuyersByCourseId(@Param("courseId") UUID courseId);
 
+    List<CourseManagement> findByCourseIdAndAccessType(UUID courseId, CourseAccessType courseAccessType);
 }
