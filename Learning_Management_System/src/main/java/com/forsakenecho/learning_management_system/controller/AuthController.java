@@ -77,7 +77,9 @@ public class AuthController {
                 token,
                 user.getRole().name(),
                 user.getStatus().name(),
-                user.getId().toString() // gửi UUID dưới dạng chuỗi
+                user.getId().toString(), // gửi UUID dưới dạng chuỗi
+                user.getName(),
+                user.getEmail()
         ));
     }
 

@@ -235,6 +235,7 @@ public class TeacherController {
         return ResponseEntity.ok("Visibility updated");
     }
 
+    // Lấy chi tiết khóa học
     @GetMapping("/courses/{courseId}/preview")
     public ResponseEntity<CourseResponse> getCoursePreview(
             @PathVariable UUID courseId,
