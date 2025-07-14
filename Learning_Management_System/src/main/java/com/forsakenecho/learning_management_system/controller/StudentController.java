@@ -1,14 +1,18 @@
-// StudentController.java
 package com.forsakenecho.learning_management_system.controller;
 
 import com.forsakenecho.learning_management_system.dto.*;
 import com.forsakenecho.learning_management_system.entity.Course;
 import com.forsakenecho.learning_management_system.entity.CourseManagement;
+import com.forsakenecho.learning_management_system.entity.TransactionHistory;
 import com.forsakenecho.learning_management_system.entity.User;
 import com.forsakenecho.learning_management_system.enums.CourseAccessType;
+import com.forsakenecho.learning_management_system.enums.TransactionType;
 import com.forsakenecho.learning_management_system.repository.CourseManagementRepository;
 import com.forsakenecho.learning_management_system.repository.CourseRepository;
+import com.forsakenecho.learning_management_system.repository.TransactionHistoryRepository;
+import com.forsakenecho.learning_management_system.repository.UserRepository;
 import com.forsakenecho.learning_management_system.service.CourseService;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -20,6 +24,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal; // Keep BigDecimal for safe calculations
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -32,6 +37,9 @@ public class StudentController {
     private final CourseService courseService;
     private final CourseRepository courseRepository;
     private final CourseManagementRepository courseManagementRepository;
+    private final TransactionHistoryRepository transactionHistoryRepository;
+    private final UserRepository userRepository;
+
 
     // Helper method to get current user
     private User getCurrentUser(Authentication authentication) {
@@ -52,14 +60,25 @@ public class StudentController {
     }
 
     // Mua khóa học
+    @Transactional // Đảm bảo giao dịch nguyên tử
     @PostMapping("/purchase")
-    public ResponseEntity<ApiResponse<PurchaseResponse>> purchaseCourse(@RequestBody PurchaseCourseRequest request, Authentication authentication) {
+    @PreAuthorize("hasRole('STUDENT')")
+    public ResponseEntity<ApiResponse<PurchaseResponse>> purchaseCourse(
+            @RequestBody PurchaseCourseRequest request,
+            Authentication authentication) {
+
         User student = getCurrentUser(authentication);
 
+        // Fetch course and its creator (teacher) within the transaction
         Course course = courseRepository.findById(request.getCourseId())
-                .orElseThrow(() -> new RuntimeException("Course not found"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Khóa học không tồn tại"));
 
-        // THÊM KIỂM TRA visible ở đây TRƯỚC KHI CHO PHÉP MUA
+        User teacher = course.getCreator(); // Get the teacher (creator of the course)
+        if (teacher == null) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Không tìm thấy thông tin giáo viên cho khóa học này.");
+        }
+
+        // ✅ Không cho mua khóa học bị ẩn
         if (!course.isVisible()) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.<PurchaseResponse>builder()
                     .message("Khóa học này hiện không khả dụng để mua.")
@@ -67,33 +86,100 @@ public class StudentController {
                     .build());
         }
 
+        // ✅ Kiểm tra đã mua hay chưa
         boolean alreadyPurchased = courseManagementRepository
                 .findByUserIdAndCourseIdAndAccessType(student.getId(), course.getId(), CourseAccessType.PURCHASED)
                 .isPresent();
 
         if (alreadyPurchased) {
             return ResponseEntity.badRequest().body(ApiResponse.<PurchaseResponse>builder()
-                    .message("Khóa học đã được mua rồi.")
+                    .message("Bạn đã mua khóa học này rồi.")
                     .timestamp(LocalDateTime.now())
                     .build());
         }
 
+        // ✅ Course price is a double, convert it to BigDecimal for calculations
+        BigDecimal coursePriceBd = BigDecimal.valueOf(course.getPrice());
+
+        // Check if it's a paid course
+        if (coursePriceBd.compareTo(BigDecimal.ZERO) > 0) { // Check if price is greater than 0
+            // ✅ studentBalanceBd is already BigDecimal from student.getBalance()
+            BigDecimal studentBalanceBd = student.getBalance(); // student.getBalance() now returns BigDecimal
+
+            // ✅ Kiểm tra số dư có đủ không
+            if (studentBalanceBd.compareTo(coursePriceBd) < 0) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.<PurchaseResponse>builder()
+                        .message("Số dư không đủ để mua khóa học này.")
+                        .timestamp(LocalDateTime.now())
+                        .build());
+            }
+
+            // ✅ Trừ tiền sinh viên (balance là BigDecimal)
+            student.setBalance(studentBalanceBd.subtract(coursePriceBd));
+            userRepository.save(student); // ✅ LƯU TRẠNG THÁI MỚI CỦA STUDENT VÀO DB
+
+            // ✅ Cộng tiền cho giáo viên (balance là BigDecimal)
+            // teacher.getbalance() already returns BigDecimal
+            BigDecimal teacherBalanceBd = teacher.getBalance() != null ? teacher.getBalance() : BigDecimal.ZERO;
+            teacher.setBalance(teacherBalanceBd.add(coursePriceBd));
+            userRepository.save(teacher); // ✅ LƯU TRẠNG THÁI MỚI CỦA TEACHER VÀO DB
+
+            // ✅ Ghi nhận giao dịch của sinh viên (người trả tiền)
+            transactionHistoryRepository.save(TransactionHistory.builder()
+                    .user(student)
+                    .type(TransactionType.PURCHASE)
+                    .amount(coursePriceBd)
+                    .description("Mua khóa học: " + course.getTitle())
+                    .createdAt(LocalDateTime.now())
+                    .build());
+
+            // ✅ Ghi nhận giao dịch cho giáo viên (người nhận tiền)
+            transactionHistoryRepository.save(TransactionHistory.builder()
+                    .user(teacher)
+                    .type(TransactionType.PURCHASE) // Có thể cân nhắc thêm TransactionType.EARNINGS nếu muốn rõ ràng hơn
+                    .amount(coursePriceBd)
+                    .description("Nhận tiền từ khóa học: " + course.getTitle())
+                    .createdAt(LocalDateTime.now())
+                    .build());
+
+        } else {
+            // Khóa học miễn phí, không cần trừ tiền hay tạo transaction cho việc trao đổi tiền
+            // Message toast sẽ khác
+            PurchaseResponse purchaseResponse = PurchaseResponse.builder()
+                    .studentId(student.getId())
+                    .courseId(course.getId())
+                    .purchasedAt(LocalDateTime.now()) // Set current time for free course enrollment
+                    .balance(student.getBalance()) // Still return as double for frontend
+                    .build();
+
+            ApiResponse<PurchaseResponse> response = ApiResponse.<PurchaseResponse>builder()
+                    .message("Đăng ký khóa học miễn phí thành công!")
+                    .data(purchaseResponse)
+                    .timestamp(LocalDateTime.now())
+                    .build();
+            return ResponseEntity.status(HttpStatus.ACCEPTED).body(response);
+        }
+
+        // ✅ Tạo access cho sinh viên vào khóa học
         CourseManagement courseManagement = CourseManagement.builder()
                 .user(student)
                 .course(course)
                 .accessType(CourseAccessType.PURCHASED)
                 .build();
-
         courseManagementRepository.save(courseManagement);
 
+        // ❌ Loại bỏ dòng này: courseRepository.save(course); - không cần thiết ở đây
+
+        // ✅ Cập nhật `PurchaseResponse` để trả về balance mới của student
         PurchaseResponse purchaseResponse = PurchaseResponse.builder()
                 .studentId(student.getId())
                 .courseId(course.getId())
                 .purchasedAt(courseManagement.getPurchasedAt())
+                .balance(student.getBalance()) // ✅ TRẢ VỀ SỐ DƯ MỚI CỦA SINH VIÊN (chuyển BigDecimal về Double)
                 .build();
 
         ApiResponse<PurchaseResponse> response = ApiResponse.<PurchaseResponse>builder()
-                .message("Mua khóa học thành công!")
+                .message("Mua khóa học thành công!") // Message cho toast
                 .data(purchaseResponse)
                 .timestamp(LocalDateTime.now())
                 .build();
@@ -157,18 +243,4 @@ public class StudentController {
 
         return ResponseEntity.ok(isEnrolled); // CHỈ trả true nếu đã mua
     }
-
-    // Endpoint để lấy danh sách ID khóa học đã mua (được gọi từ PublicCourseController)
-    // Endpoint này đã được di chuyển sang PublicCourseController
-    // @GetMapping("/purchased-course-ids")
-    // @PreAuthorize("isAuthenticated()")
-    // public ResponseEntity<List<UUID>> getPurchasedCourseIds(
-    //         @AuthenticationPrincipal UserDetails userDetails
-    // ) {
-    //     User currentUser = userRepository.findByEmail(userDetails.getUsername())
-    //             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Người dùng không tồn tại."));
-    //
-    //     List<UUID> purchasedIds = courseService.getPurchasedCourseIds(currentUser.getId());
-    //     return ResponseEntity.ok(purchasedIds);
-    // }
 }
