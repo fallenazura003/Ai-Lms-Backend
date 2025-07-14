@@ -4,6 +4,7 @@ import com.forsakenecho.learning_management_system.jwt.JwtFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod; // ✅ Thêm import này
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -31,6 +32,7 @@ public class SecurityConfig {
     private final JwtFilter jwtFilter;
     private final UserDetailsService userDetailsService;
 
+    @Order(2)
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
@@ -52,6 +54,7 @@ public class SecurityConfig {
 
                         .requestMatchers("/api/auth/**").permitAll()
 
+
                         .requestMatchers("/api/teacher/courses/generate").permitAll()
                         .requestMatchers("/api/teacher/ai/generate-lesson").permitAll()
 
@@ -59,6 +62,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/student/courses/{courseId}/comments").permitAll()
                         .requestMatchers(HttpMethod.PUT, "/api/student/courses/{courseId}/comments/{commentId}").permitAll()
                         .requestMatchers(HttpMethod.DELETE, "/api/student/courses/{courseId}/comments/{commentId}").permitAll()
+
+
+
 
                         .requestMatchers(HttpMethod.GET, "/api/student/courses/purchased-ids/{courseId}").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/student/courses/{courseId}/rating/average").permitAll()

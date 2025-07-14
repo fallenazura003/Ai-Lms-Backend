@@ -6,12 +6,11 @@ import com.forsakenecho.learning_management_system.entity.CourseManagement;
 import com.forsakenecho.learning_management_system.entity.TransactionHistory;
 import com.forsakenecho.learning_management_system.entity.User;
 import com.forsakenecho.learning_management_system.enums.CourseAccessType;
+import com.forsakenecho.learning_management_system.enums.NotificationType;
 import com.forsakenecho.learning_management_system.enums.TransactionType;
-import com.forsakenecho.learning_management_system.repository.CourseManagementRepository;
-import com.forsakenecho.learning_management_system.repository.CourseRepository;
-import com.forsakenecho.learning_management_system.repository.TransactionHistoryRepository;
-import com.forsakenecho.learning_management_system.repository.UserRepository;
+import com.forsakenecho.learning_management_system.repository.*;
 import com.forsakenecho.learning_management_system.service.CourseService;
+import com.forsakenecho.learning_management_system.service.NotificationService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -39,6 +38,7 @@ public class StudentController {
     private final CourseManagementRepository courseManagementRepository;
     private final TransactionHistoryRepository transactionHistoryRepository;
     private final UserRepository userRepository;
+    private final NotificationService  notificationService;
 
 
     // Helper method to get current user
@@ -119,7 +119,6 @@ public class StudentController {
             userRepository.save(student); // ✅ LƯU TRẠNG THÁI MỚI CỦA STUDENT VÀO DB
 
             // ✅ Cộng tiền cho giáo viên (balance là BigDecimal)
-            // teacher.getbalance() already returns BigDecimal
             BigDecimal teacherBalanceBd = teacher.getBalance() != null ? teacher.getBalance() : BigDecimal.ZERO;
             teacher.setBalance(teacherBalanceBd.add(coursePriceBd));
             userRepository.save(teacher); // ✅ LƯU TRẠNG THÁI MỚI CỦA TEACHER VÀO DB
@@ -168,7 +167,7 @@ public class StudentController {
                 .build();
         courseManagementRepository.save(courseManagement);
 
-        // ❌ Loại bỏ dòng này: courseRepository.save(course); - không cần thiết ở đây
+
 
         // ✅ Cập nhật `PurchaseResponse` để trả về balance mới của student
         PurchaseResponse purchaseResponse = PurchaseResponse.builder()
@@ -183,6 +182,13 @@ public class StudentController {
                 .data(purchaseResponse)
                 .timestamp(LocalDateTime.now())
                 .build();
+
+        notificationService.sendNotification(
+                teacher.getEmail(), // ✅ Lấy trực tiếp từ `teacher`
+                student.getName() + " đã mua khóa học: " + course.getTitle(),
+                NotificationType.COURSE_PURCHASED
+        );
+
 
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(response);
     }

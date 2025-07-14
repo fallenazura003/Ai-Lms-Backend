@@ -3,6 +3,7 @@ package com.forsakenecho.learning_management_system.controller;
 
 import com.forsakenecho.learning_management_system.dto.*;
 import com.forsakenecho.learning_management_system.enums.CourseCategory;
+import com.forsakenecho.learning_management_system.enums.NotificationType;
 import com.forsakenecho.learning_management_system.service.AiCourseGeneratorService;
 import com.forsakenecho.learning_management_system.service.FileStorageService;
 
@@ -18,6 +19,7 @@ import com.forsakenecho.learning_management_system.repository.EventRepository;
 import com.forsakenecho.learning_management_system.service.CourseService;
 
 
+import com.forsakenecho.learning_management_system.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.data.domain.Page;
@@ -51,6 +53,7 @@ public class TeacherController {
     private final FileStorageService fileStorageService;
     private final AiCourseGeneratorService  aiCourseGeneratorService;
     private final EventRepository eventRepository;
+    private final NotificationService notificationService;
 
     // Helper method to get current user
     private User getCurrentUser(Authentication authentication) {
@@ -197,6 +200,13 @@ public class TeacherController {
                 .timestamp(LocalDateTime.now())
                 .build());
 
+        // ✅ Gửi thông báo đến học sinh đã mua khóa học
+        notificationService.sendNotificationToStudentsOfCourse(
+                updatedCourse.getId(),
+                "Khóa học " + updatedCourse.getTitle() + " vừa được cập nhật.",
+                NotificationType.COURSE_UPDATED
+        );
+
         return ResponseEntity.ok(CourseResponse.from(updatedCourse));
     }
 
@@ -206,6 +216,9 @@ public class TeacherController {
             @PathVariable UUID courseId,
             Authentication authentication) {
         User teacher = getCurrentUser(authentication);
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Khóa học không tồn tại"));
+
         courseService.deleteCourse(courseId, teacher.getId());
 
         // Ghi log Event
@@ -214,6 +227,13 @@ public class TeacherController {
                 .performedBy(teacher.getName())
                 .timestamp(LocalDateTime.now())
                 .build());
+
+        // ✅ Gửi thông báo đến học sinh đã mua khóa học
+        notificationService.sendNotificationToStudentsOfCourse(
+                courseId,
+                "Khóa học " + course.getTitle() + " đã bị xóa bởi giáo viên.",
+                NotificationType.COURSE_DELETED
+        );
 
         return ResponseEntity.noContent().build(); // 204 No Content
     }
