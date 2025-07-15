@@ -69,6 +69,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/student/courses/purchased-ids/{courseId}").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/student/courses/{courseId}/rating/average").permitAll()
 
+                        .requestMatchers(HttpMethod.POST, "/api/notifications/mark-all-as-read").hasAnyRole("STUDENT", "TEACHER", "ADMIN")
+
 
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/teacher/**").hasRole("TEACHER")
