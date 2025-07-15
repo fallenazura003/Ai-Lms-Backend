@@ -1,5 +1,6 @@
 package com.forsakenecho.learning_management_system.entity;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.forsakenecho.learning_management_system.enums.NotificationType;
 import jakarta.persistence.*;
 import lombok.Data;
@@ -19,6 +20,8 @@ public class Notification {
 
     private String recipientEmail;
     private String message;
+
+    @JsonProperty("isRead")
     private boolean isRead = false;
 
     @Enumerated(EnumType.STRING)
@@ -27,4 +30,5 @@ public class Notification {
     private LocalDateTime createdAt = LocalDateTime.now();
 
     // getters, setters
+
 }

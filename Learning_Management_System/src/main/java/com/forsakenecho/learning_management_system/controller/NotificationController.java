@@ -27,4 +27,11 @@ public class NotificationController {
         notificationService.markAsRead(id);
         return ResponseEntity.ok().build();
     }
+
+    // ✅ NEW ENDPOINT: Mark all notifications as read for the authenticated user
+    @PostMapping("/mark-all-as-read")
+    public ResponseEntity<Void> markAllAsRead(Authentication auth) {
+        notificationService.markAllAsReadForUser(auth.getName());
+        return ResponseEntity.ok().build();
+    }
 }
