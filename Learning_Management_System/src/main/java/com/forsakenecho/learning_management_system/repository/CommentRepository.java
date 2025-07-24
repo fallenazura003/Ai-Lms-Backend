@@ -15,6 +15,7 @@ public interface CommentRepository extends JpaRepository<Comment, UUID> {
     List<Comment>  findByCourseId(UUID courseId);
     Optional<Comment> findByIdAndAuthor_Id(UUID id, UUID authorId);
 
+    void deleteByCourse_Id(UUID courseId);
 }
 
 
