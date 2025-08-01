@@ -65,25 +65,7 @@ public class CourseService {
         return savedCourse;
     }
 
-    public List<CourseResponse> getCoursesByUserAndAccessType(UUID userId, CourseAccessType accessType){
-        // Logic này có vẻ không được dùng với phân trang, cần xem xét lại mục đích
-        // Tuy nhiên, nếu nó được dùng, cũng nên xem xét việc lọc visible
-        // Hiện tại, tôi sẽ không sửa đổi nó để tránh phá vỡ các phần khác nếu nó có logic riêng
-        return courseManagementRepository.findByUserIdAndAccessType(userId, accessType)
-                .stream()
-                .map(CourseManagement::getCourse)
-                .filter(Course::isVisible) // Giữ lại bộ lọc này nếu muốn visible
-                .map(c -> CourseResponse.builder()
-                        .id(c.getId())
-                        .title(c.getTitle())
-                        .description(c.getDescription())
-                        .price(c.getPrice())
-                        .creatorName(c.getCreator().getName())
-                        .imageUrl(c.getImageUrl())
-                        .build()
-                )
-                .collect(Collectors.toList());
-    }
+
 
     // PHƯƠNG THỨC NÀY ĐƯỢC SỬ DỤNG CHO DANH SÁCH KHÓA HỌC ĐÃ MUA CÓ PHÂN TRANG
     public Page<Course> getCoursesByUserAndAccessType(UUID userId, CourseAccessType type, Pageable pageable) {
