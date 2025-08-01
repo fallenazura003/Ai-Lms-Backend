@@ -54,6 +54,8 @@ public class SecurityConfig {
 
                         .requestMatchers("/api/auth/**").permitAll()
 
+                        .requestMatchers("/api/wallet/**").permitAll()
+                        .requestMatchers("/api/payment/**").permitAll()
 
                         .requestMatchers("/api/teacher/courses/generate").permitAll()
                         .requestMatchers("/api/teacher/ai/generate-lesson").permitAll()

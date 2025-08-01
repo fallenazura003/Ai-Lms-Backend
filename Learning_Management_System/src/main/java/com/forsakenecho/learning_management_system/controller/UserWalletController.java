@@ -3,11 +3,11 @@ package com.forsakenecho.learning_management_system.controller;
 import com.forsakenecho.learning_management_system.dto.ApiResponse;
 import com.forsakenecho.learning_management_system.dto.TopUpRequest;
 import com.forsakenecho.learning_management_system.dto.TransactionHistoryDTO;
-import com.forsakenecho.learning_management_system.entity.TransactionHistory;
 import com.forsakenecho.learning_management_system.entity.User;
-import com.forsakenecho.learning_management_system.enums.TransactionType;
 import com.forsakenecho.learning_management_system.repository.TransactionHistoryRepository;
 import com.forsakenecho.learning_management_system.repository.UserRepository;
+import com.forsakenecho.learning_management_system.service.StripeService;
+import com.stripe.exception.StripeException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -30,42 +30,45 @@ public class UserWalletController {
 
     private final UserRepository userRepository;
     private final TransactionHistoryRepository transactionHistoryRepository;
-
+    private final StripeService stripeService;
 
     @PostMapping("/top-up")
     @PreAuthorize("hasAnyRole('STUDENT', 'TEACHER')")
-    public ResponseEntity<ApiResponse<BigDecimal>> topUp(
+    public ResponseEntity<ApiResponse<String>> topUp(
             @RequestBody TopUpRequest request,
-            Authentication authentication) {
+            Authentication authentication) throws StripeException {
 
         User user = (User) authentication.getPrincipal();
 
-        if (request.amount().compareTo(BigDecimal.ZERO) <= 0) {
+        if (request.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Số tiền nạp phải lớn hơn 0");
         }
 
-        user.setBalance(user.getBalance().add(request.amount()));
-        userRepository.save(user);
+        // Tạo Checkout Session và lấy URL
+        String checkoutUrl = stripeService.createCheckoutSession(
+                request.getAmount(),
+                request.getCurrency(),
+                user.getId());
 
-        transactionHistoryRepository.save(TransactionHistory.builder()
-                .user(user)
-                .type(TransactionType.TOP_UP)
-                .amount(request.amount())
-                .description("Nạp tiền vào ví")
-                .build());
-
-        return ResponseEntity.ok(ApiResponse.<BigDecimal>builder()
-                .message("Nạp tiền thành công")
-                .data(user.getBalance()) // ✅ dữ liệu chính là số dư mới
+        // Trả về URL cho frontend
+        return ResponseEntity.ok(ApiResponse.<String>builder()
+                .message("Tạo yêu cầu thanh toán thành công. Vui lòng chuyển hướng đến trang thanh toán của Stripe.")
+                .data(checkoutUrl) // Trả về URL
                 .timestamp(LocalDateTime.now())
                 .build());
     }
 
 
+
     @GetMapping("/balance")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<BigDecimal> getBalance(Authentication authentication) {
-        User user = (User) authentication.getPrincipal();
+        User authenticatedUser = (User) authentication.getPrincipal();
+
+        // ✅ TRUY VẤN LẠI NGƯỜI DÙNG TỪ CƠ SỞ DỮ LIỆU ĐỂ CÓ SỐ DƯ MỚI NHẤT
+        User user = userRepository.findById(authenticatedUser.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng."));
+
         return ResponseEntity.ok(user.getBalance());
     }
 
