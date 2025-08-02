@@ -35,27 +35,35 @@ public class JwtFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
-        final String authorizationHeader = request.getHeader("Authorization");
 
+        String path = request.getRequestURI();
+
+        // Bỏ qua xác thực JWT cho các endpoint public
+        if (path.endsWith("/api/payment/stripe-webhook")
+                || path.startsWith("/ws")
+                || path.startsWith("/uploads")) {
+            System.out.println("Skipping JWT filter for path: " + path);
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        final String authorizationHeader = request.getHeader("Authorization");
         String username = null;
         String jwt = null;
 
         if (authorizationHeader != null && authorizationHeader.startsWith("Bearer ")) {
             jwt = authorizationHeader.substring(7);
 
-            // Bước kiểm tra Blacklist
-            // Sử dụng hash của token để kiểm tra nếu bạn đã lưu hash
-            String tokenToCheck = jwtUtil.hashToken(jwt); // Nếu bạn lưu hash
-            // String tokenToCheck = jwt; // Nếu bạn lưu toàn bộ token
-
+            String tokenToCheck = jwtUtil.hashToken(jwt);
             if (blacklistedTokenRepository.existsByTokenHash(tokenToCheck)) {
                 response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Token is blacklisted");
-                return; // Ngừng xử lý request nếu token nằm trong blacklist
+                return;
             }
 
             try {
                 username = jwtUtil.extractUsername(jwt);
-            } catch (SignatureException | MalformedJwtException | UnsupportedJwtException | IllegalArgumentException e) {
+            } catch (SignatureException | MalformedJwtException | UnsupportedJwtException |
+                     IllegalArgumentException e) {
                 response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid JWT Token: " + e.getMessage());
                 return;
             } catch (ExpiredJwtException e) {
@@ -66,23 +74,17 @@ public class JwtFilter extends OncePerRequestFilter {
 
         if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
             UserDetails userDetails = this.userDetailsService.loadUserByUsername(username);
-
-            // Kiểm tra tính hợp lệ của token (username khớp và chưa hết hạn)
-            // Lưu ý: isTokenValid() của bạn đã bao gồm kiểm tra hết hạn, nhưng chúng ta đã kiểm tra ExpiredJwtException ở trên.
-            // Có thể đơn giản hóa isTokenValid() chỉ kiểm tra username.
-            if (jwtUtil.isTokenValid(jwt, userDetails)) { // jwtUtil.isTokenValid() của bạn đã kiểm tra cả username và hết hạn
-                UsernamePasswordAuthenticationToken usernamePasswordAuthenticationToken =
+            if (jwtUtil.isTokenValid(jwt, userDetails)) {
+                UsernamePasswordAuthenticationToken authToken =
                         new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
-                usernamePasswordAuthenticationToken
-                        .setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                SecurityContextHolder.getContext().setAuthentication(usernamePasswordAuthenticationToken);
-                System.out.println("User authenticated: " + userDetails.getUsername());
-                System.out.println("Authorities set: " + userDetails.getAuthorities());
+                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                SecurityContextHolder.getContext().setAuthentication(authToken);
             } else {
                 response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid token for user details or already expired");
                 return;
             }
         }
+
         filterChain.doFilter(request, response);
     }
 }

@@ -13,7 +13,7 @@ import org.springframework.security.web.SecurityFilterChain;
 public class WebSocketSecurityConfig {
 
     @Bean
-    @Order(1) // đảm bảo filter WebSocket ưu tiên xử lý
+    @Order(2) // đảm bảo filter WebSocket ưu tiên xử lý
     public SecurityFilterChain webSocketSecurity(HttpSecurity http) throws Exception {
         http
                 .securityMatcher("/ws/**") // áp dụng cho các request /ws/**

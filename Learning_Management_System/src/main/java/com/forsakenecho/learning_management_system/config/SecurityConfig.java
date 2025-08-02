@@ -32,7 +32,18 @@ public class SecurityConfig {
     private final JwtFilter jwtFilter;
     private final UserDetailsService userDetailsService;
 
-    @Order(2)
+    @Order(1) // Chain cho Stripe webhook, không add JwtFilter
+    @Bean
+    public SecurityFilterChain webhookFilterChain(HttpSecurity http) throws Exception {
+        http
+                .securityMatcher("/api/payment/stripe-webhook")
+                .csrf(AbstractHttpConfigurer::disable)
+                .authorizeHttpRequests(authorize -> authorize.anyRequest().permitAll())
+                .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
+        return http.build();
+    }
+
+    @Order(3)
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
@@ -54,7 +65,6 @@ public class SecurityConfig {
 
                         .requestMatchers("/api/auth/**").permitAll()
 
-                        .requestMatchers("/api/wallet/**").permitAll()
                         .requestMatchers("/api/payment/**").permitAll()
 
                         .requestMatchers("/api/teacher/courses/generate").permitAll()
