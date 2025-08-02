@@ -1,5 +1,7 @@
 package com.forsakenecho.learning_management_system.controller;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.forsakenecho.learning_management_system.entity.TransactionHistory;
 import com.forsakenecho.learning_management_system.entity.User;
 import com.forsakenecho.learning_management_system.enums.TransactionType;
@@ -7,9 +9,7 @@ import com.forsakenecho.learning_management_system.repository.TransactionHistory
 import com.forsakenecho.learning_management_system.repository.UserRepository;
 import com.stripe.Stripe;
 import com.stripe.exception.SignatureVerificationException;
-import com.stripe.model.PaymentIntent;
 import com.stripe.model.Event;
-import com.stripe.model.checkout.Session;
 import com.stripe.net.Webhook;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -28,6 +28,7 @@ public class PaymentController {
 
     private final UserRepository userRepository;
     private final TransactionHistoryRepository transactionHistoryRepository;
+    private final ObjectMapper objectMapper;
 
     @Value("${stripe.secretKey}")
     private String secretKey;
@@ -37,51 +38,75 @@ public class PaymentController {
 
     @PostMapping("/stripe-webhook")
     @Transactional
-    public ResponseEntity<String> handleStripeWebhook(@RequestBody String payload, @RequestHeader("Stripe-Signature") String sigHeader) {
+    public ResponseEntity<String> handleStripeWebhook(
+            @RequestBody String payload,
+            @RequestHeader("Stripe-Signature") String sigHeader) {
+
         Stripe.apiKey = secretKey;
-        Event event;
 
         try {
-            // Xác minh chữ ký webhook để đảm bảo sự kiện đến từ Stripe
-            event = Webhook.constructEvent(payload, sigHeader, webhookSecret);
-        } catch (SignatureVerificationException e) {
-            return new ResponseEntity<>("Chữ ký không hợp lệ.", HttpStatus.BAD_REQUEST);
-        }
+            // Xác thực chữ ký webhook từ Stripe
+            Event event = Webhook.constructEvent(payload, sigHeader, webhookSecret);
+            System.out.println("📩 Received event: " + event.getType());
 
-        // Xử lý sự kiện tùy thuộc vào loại sự kiện
-        if ("checkout.session.completed".equals(event.getType())) {
-            Session session = (Session) event.getDataObjectDeserializer().getObject().get();
+            // Xử lý khi thanh toán thành công
+            if ("checkout.session.completed".equals(event.getType())) {
+                JsonNode jsonNode = objectMapper.readTree(payload).path("data").path("object");
 
-            try {
-                // 🔍 Truy xuất PaymentIntent từ session
-                PaymentIntent paymentIntent = PaymentIntent.retrieve(session.getPaymentIntent());
+                String paymentStatus = jsonNode.get("payment_status").asText();
+                String currency = jsonNode.get("currency").asText();
+                long amountTotal = jsonNode.get("amount_total").asLong();
+                String userIdStr = jsonNode.path("metadata").path("userId").asText();
+                String sessionId = jsonNode.get("id").asText();
 
-                if ("succeeded".equals(paymentIntent.getStatus())) {
-                    UUID userId = UUID.fromString(session.getMetadata().get("userId"));
+                System.out.println("✅ Session ID: " + sessionId);
+                System.out.println("💰 Amount: " + amountTotal + " " + currency);
+                System.out.println("📌 Payment Status: " + paymentStatus);
+                System.out.println("👤 User ID from metadata: " + userIdStr);
 
-                    // 🔎 Sử dụng đúng đơn vị tiền tệ
-                    BigDecimal amount = BigDecimal.valueOf(session.getAmountTotal())
-                            .divide(BigDecimal.valueOf(1000)); // nếu là VND, Stripe trả mili-VND
-
-                    User user = userRepository.findById(userId).orElseThrow(
-                            () -> new RuntimeException("Không tìm thấy người dùng với ID: " + userId));
-
-                    user.setBalance(user.getBalance().add(amount));
-                    userRepository.save(user);
-
-                    transactionHistoryRepository.save(TransactionHistory.builder()
-                            .user(user)
-                            .type(TransactionType.TOP_UP)
-                            .amount(amount)
-                            .description("Nạp tiền vào ví qua Stripe, Session ID: " + session.getId())
-                            .build());
+                if (!"paid".equalsIgnoreCase(paymentStatus)) {
+                    System.out.println("⚠ Payment not paid, skipping...");
+                    return ResponseEntity.ok("Payment not paid");
+                }
+                if (userIdStr == null || userIdStr.isEmpty()) {
+                    System.err.println("❌ Missing userId in metadata");
+                    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Missing userId");
                 }
 
-            } catch (Exception e) {
-                return new ResponseEntity<>("Lỗi xử lý giao dịch", HttpStatus.INTERNAL_SERVER_ERROR);
+                UUID userId = UUID.fromString(userIdStr);
+                BigDecimal amount;
+                if ("vnd".equalsIgnoreCase(currency)) {
+                    amount = BigDecimal.valueOf(amountTotal);
+                } else {
+                    amount = BigDecimal.valueOf(amountTotal).divide(BigDecimal.valueOf(100));
+                }
+
+                // Cộng tiền vào tài khoản
+                User user = userRepository.findById(userId)
+                        .orElseThrow(() -> new RuntimeException("User not found: " + userId));
+
+                user.setBalance(user.getBalance().add(amount));
+                userRepository.save(user);
+
+                // Lưu lịch sử giao dịch
+                transactionHistoryRepository.save(TransactionHistory.builder()
+                        .user(user)
+                        .type(TransactionType.TOP_UP)
+                        .amount(amount)
+                        .description("Nạp tiền qua Stripe - Session ID: " + sessionId)
+                        .build());
+
+                System.out.println("✅ Nạp tiền thành công cho " + user.getEmail() + ": +" + amount + " " + currency);
             }
+
+        } catch (SignatureVerificationException e) {
+            System.err.println("❌ Invalid Stripe signature: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Invalid signature");
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Webhook handling error");
         }
 
-        return new ResponseEntity<>("Success", HttpStatus.OK);
+        return ResponseEntity.ok("Success");
     }
 }
