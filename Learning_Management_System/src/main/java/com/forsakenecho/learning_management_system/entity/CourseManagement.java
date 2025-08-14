@@ -1,5 +1,6 @@
 package com.forsakenecho.learning_management_system.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.forsakenecho.learning_management_system.enums.CourseAccessType;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -23,12 +24,14 @@ public class CourseManagement {
     @org.hibernate.annotations.JdbcTypeCode(java.sql.Types.VARCHAR)
     private UUID id;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY) // Thêm fetch type LAZY để tối ưu
     @JoinColumn(name = "user_id")
+    @JsonIgnore // Sửa lỗi tuần tự hóa
     private User user;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY) // Thêm fetch type LAZY để tối ưu
     @JoinColumn(name = "course_id")
+    @JsonIgnore // Sửa lỗi tuần tự hóa
     private Course course;
 
     @Enumerated(EnumType.STRING)
@@ -37,5 +40,4 @@ public class CourseManagement {
     @CreationTimestamp
     @Column(name = "purchased_at", updatable = false)
     private LocalDateTime purchasedAt;
-
 }

@@ -1,10 +1,9 @@
 package com.forsakenecho.learning_management_system.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 import org.hibernate.annotations.JdbcTypeCode;
 
 import java.time.LocalDateTime;
@@ -13,27 +12,32 @@ import java.util.Set;
 import java.util.UUID;
 
 @Entity
-@Table(name = "learning_progress")
+@Table(name = "learning_progress",
+        uniqueConstraints = @UniqueConstraint(columnNames = {"student_id", "course_id"}))
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
 public class LearningProgress {
+
     @Id
     @GeneratedValue
     @Column(columnDefinition = "CHAR(36)")
     @JdbcTypeCode(java.sql.Types.VARCHAR)
     private UUID id;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "student_id", nullable = false)
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    @ToString.Exclude
     private User student;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "course_id", nullable = false)
+    @JsonIgnore // Sửa lỗi tuần tự hóa
+    @ToString.Exclude
     private Course course;
 
-    // ✅ Thêm @Builder.Default để đảm bảo khởi tạo khi dùng builder
     @Builder.Default
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "completed_lessons", joinColumns = @JoinColumn(name = "progress_id"))
@@ -41,16 +45,22 @@ public class LearningProgress {
     @JdbcTypeCode(java.sql.Types.VARCHAR)
     private Set<UUID> completedLessonIds = new HashSet<>();
 
-    // ✅ Số lượng bài học hoàn thành được tính tự động
     private int completedLessons;
-    private int totalLessons;
+    private int totalLessons; // Giá trị này sẽ được Service set
 
     private LocalDateTime lastAccessedAt;
 
     @Enumerated(EnumType.STRING)
     private ProgressStatus status;
 
-    public enum ProgressStatus {
-        IN_PROGRESS, COMPLETED
+    public enum ProgressStatus { IN_PROGRESS, COMPLETED }
+
+    @PrePersist
+    @PreUpdate
+    private void syncCounts() {
+        this.completedLessons = this.completedLessonIds != null ? this.completedLessonIds.size() : 0;
+        this.status = (totalLessons > 0 && completedLessons >= totalLessons)
+                ? ProgressStatus.COMPLETED
+                : ProgressStatus.IN_PROGRESS;
     }
 }
