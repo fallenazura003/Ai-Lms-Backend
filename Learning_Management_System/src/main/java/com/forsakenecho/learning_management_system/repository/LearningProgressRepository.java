@@ -8,7 +8,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface LearningProgressRepository extends JpaRepository<LearningProgress, UUID> {
-    Optional<LearningProgress> findByStudentIdAndCourseId(UUID studentId, UUID courseId);
     List<LearningProgress> findByStudentId(UUID studentId);
+    Optional<LearningProgress> findByStudentIdAndCourseId(UUID studentId, UUID courseId);
+    boolean existsByStudentIdAndCourseId(UUID studentId, UUID courseId);
 }
-

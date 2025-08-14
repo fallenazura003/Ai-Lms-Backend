@@ -1,6 +1,7 @@
 package com.forsakenecho.learning_management_system.entity;
 
 import com.fasterxml.jackson.annotation.JsonManagedReference;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.forsakenecho.learning_management_system.enums.CourseCategory;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -34,7 +35,7 @@ public class Course {
     @Column(nullable = false)
     private CourseCategory category;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY) // Thêm fetch type LAZY để tối ưu
     @JoinColumn(name = "creator_id")
     private User creator;
 
@@ -43,13 +44,11 @@ public class Course {
     private List<Lesson> lessons = new ArrayList<>();
 
     @OneToMany(mappedBy = "course", cascade = CascadeType.ALL,orphanRemoval = true)
+    @JsonIgnore // Sửa lỗi tuần tự hóa
     private List<CourseManagement> courseManagers = new ArrayList<>();
 
     private Double price;
-
     private String imageUrl;
-
-
 
     @CreationTimestamp
     @Column(updatable = false)
@@ -67,5 +66,4 @@ public class Course {
         }
         return "INVISIBLE";
     }
-
 }

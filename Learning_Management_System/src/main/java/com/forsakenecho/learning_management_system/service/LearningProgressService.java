@@ -1,64 +1,105 @@
 package com.forsakenecho.learning_management_system.service;
 
+import com.forsakenecho.learning_management_system.dto.CourseProgressSummaryDTO;
+import com.forsakenecho.learning_management_system.dto.LearningProgressDTO;
+import com.forsakenecho.learning_management_system.dto.LessonProgressDTO;
 import com.forsakenecho.learning_management_system.entity.Course;
 import com.forsakenecho.learning_management_system.entity.LearningProgress;
 import com.forsakenecho.learning_management_system.entity.User;
 import com.forsakenecho.learning_management_system.repository.CourseRepository;
 import com.forsakenecho.learning_management_system.repository.LearningProgressRepository;
+import com.forsakenecho.learning_management_system.repository.LessonRepository;
 import com.forsakenecho.learning_management_system.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
-import java.util.Set;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class LearningProgressService {
+
     private final LearningProgressRepository progressRepository;
     private final CourseRepository courseRepository;
     private final UserRepository userRepository;
+    private final LessonRepository lessonRepository;
 
-    @Transactional
-    public LearningProgress completeLesson(UUID studentId, UUID courseId, UUID lessonId) {
-        LearningProgress progress = progressRepository
-                .findByStudentIdAndCourseId(studentId, courseId)
+    private LearningProgress getOrCreate(UUID studentId, UUID courseId) {
+        return progressRepository.findByStudentIdAndCourseId(studentId, courseId)
                 .orElseGet(() -> {
                     Course course = courseRepository.findById(courseId)
-                            .orElseThrow(() -> new RuntimeException("Course not found"));
+                            .orElseThrow(() -> new NoSuchElementException("Course not found"));
                     User student = userRepository.findById(studentId)
-                            .orElseThrow(() -> new RuntimeException("User not found"));
+                            .orElseThrow(() -> new NoSuchElementException("User not found"));
+
+                    int totalLessons = lessonRepository.countByCourseId(courseId);
+
                     return LearningProgress.builder()
                             .student(student)
                             .course(course)
-                            .totalLessons(course.getLessons().size())
-                            .completedLessons(0)
+                            .totalLessons(totalLessons)
                             .status(LearningProgress.ProgressStatus.IN_PROGRESS)
                             .lastAccessedAt(LocalDateTime.now())
                             .build();
                 });
+    }
 
+    @Transactional
+    public LearningProgress completeLesson(UUID studentId, UUID courseId, UUID lessonId) {
+        LearningProgress progress = getOrCreate(studentId, courseId);
         if (progress.getCompletedLessonIds().add(lessonId)) {
-            progress.setCompletedLessons(progress.getCompletedLessonIds().size());
-            progress.setLastAccessedAt(LocalDateTime.now());
-            if (progress.getCompletedLessons() >= progress.getTotalLessons()) {
-                progress.setStatus(LearningProgress.ProgressStatus.COMPLETED);
+            if (progress.getTotalLessons() == 0) {
+                progress.setTotalLessons(lessonRepository.countByCourseId(courseId));
             }
+            progress.setLastAccessedAt(LocalDateTime.now());
         }
-
         return progressRepository.save(progress);
     }
 
-    public List<LearningProgress> getProgressForStudent(UUID studentId) {
-        return progressRepository.findByStudentId(studentId);
+    @Transactional
+    public LearningProgress uncompleteLesson(UUID studentId, UUID courseId, UUID lessonId) {
+        LearningProgress progress = getOrCreate(studentId, courseId);
+        if (progress.getCompletedLessonIds().remove(lessonId)) {
+            if (progress.getTotalLessons() == 0) {
+                progress.setTotalLessons(lessonRepository.countByCourseId(courseId));
+            }
+            progress.setLastAccessedAt(LocalDateTime.now());
+        }
+        return progressRepository.save(progress);
     }
 
-    // ✅ Phương thức mới: Lấy tiến độ của một khóa học cụ thể
-    public Optional<LearningProgress> getProgressForStudentAndCourse(UUID studentId, UUID courseId) {
-        return progressRepository.findByStudentIdAndCourseId(studentId, courseId);
+    @Transactional(readOnly = true)
+    public List<LearningProgressDTO> getProgressForStudent(UUID studentId) {
+        return progressRepository.findByStudentId(studentId).stream()
+                .map(LearningProgressDTO::from)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<LearningProgressDTO> getProgressForStudentAndCourse(UUID studentId, UUID courseId) {
+        return progressRepository.findByStudentIdAndCourseId(studentId, courseId)
+                .map(LearningProgressDTO::from);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<CourseProgressSummaryDTO> getSummary(UUID studentId, UUID courseId) {
+        return progressRepository.findByStudentIdAndCourseId(studentId, courseId)
+                .map(CourseProgressSummaryDTO::from);
+    }
+
+    @Transactional(readOnly = true)
+    public List<LessonProgressDTO> getUserCourseProgress(UUID userId, UUID courseId) {
+        LearningProgress lp = progressRepository.findByStudentIdAndCourseId(userId, courseId)
+                .orElseThrow(() -> new NoSuchElementException("Progress not found"));
+
+        List<UUID> lessonIds = lessonRepository.findLessonIdsByCourseId(courseId);
+        Set<UUID> completedIds = lp.getCompletedLessonIds();
+
+        return lessonIds.stream()
+                .map(id -> new LessonProgressDTO(id, completedIds.contains(id)))
+                .collect(Collectors.toList());
     }
 }
