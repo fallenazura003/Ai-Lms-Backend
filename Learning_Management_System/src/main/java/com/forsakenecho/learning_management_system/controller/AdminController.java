@@ -1,5 +1,6 @@
 package com.forsakenecho.learning_management_system.controller;
 
+import com.forsakenecho.learning_management_system.controller.auth.AuthController;
 import com.forsakenecho.learning_management_system.dto.CourseResponse;
 import com.forsakenecho.learning_management_system.dto.RegisterRequest;
 import com.forsakenecho.learning_management_system.entity.Course;
@@ -28,7 +29,6 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;

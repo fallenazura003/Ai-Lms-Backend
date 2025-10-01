@@ -3,6 +3,7 @@ package com.forsakenecho.learning_management_system.controller;
 
 import com.forsakenecho.learning_management_system.dto.BuyerDto;
 import com.forsakenecho.learning_management_system.dto.PurchaseDetailDto;
+import com.forsakenecho.learning_management_system.dto.RevenueChartDTO;
 import com.forsakenecho.learning_management_system.dto.TeacherDashboardStats;
 import com.forsakenecho.learning_management_system.entity.User;
 import com.forsakenecho.learning_management_system.service.TeacherService;
@@ -38,6 +39,14 @@ public class TeacherDashboardController {
         User currentUser = (User) authentication.getPrincipal();
         TeacherDashboardStats stats = teacherService.getTeacherDashboardStats(currentUser.getId());
         return ResponseEntity.ok(stats);
+    }
+
+    // ENDPOINT MỚI CHO BIỂU ĐỒ DOANH THU
+    @GetMapping("/revenue-chart")
+    public ResponseEntity<List<RevenueChartDTO>> getRevenueChartData(Authentication authentication) {
+        User currentUser = (User) authentication.getPrincipal();
+        List<RevenueChartDTO> revenueData = teacherService.getRevenueChartData(currentUser.getId());
+        return ResponseEntity.ok(revenueData);
     }
 
     @GetMapping("/purchases")

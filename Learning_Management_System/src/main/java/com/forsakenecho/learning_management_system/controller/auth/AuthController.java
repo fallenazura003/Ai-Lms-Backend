@@ -1,4 +1,4 @@
-package com.forsakenecho.learning_management_system.controller;
+package com.forsakenecho.learning_management_system.controller.auth;
 
 import com.forsakenecho.learning_management_system.dto.*;
 import com.forsakenecho.learning_management_system.entity.BlacklistedToken;

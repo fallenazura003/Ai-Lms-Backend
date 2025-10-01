@@ -60,9 +60,8 @@ public class LearningProgressController {
             Authentication authentication
     ) {
         User student = (User) authentication.getPrincipal();
-        return progressService.getProgressForStudentAndCourse(student.getId(), courseId)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+        LearningProgressDTO progress = progressService.getProgressForStudentAndCourse(student.getId(), courseId);
+        return ResponseEntity.ok(progress);
     }
 
     @PreAuthorize("hasRole('STUDENT')")
