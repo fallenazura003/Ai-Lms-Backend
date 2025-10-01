@@ -78,10 +78,10 @@ public class LearningProgressService {
                 .collect(Collectors.toList());
     }
 
-    @Transactional(readOnly = true)
-    public Optional<LearningProgressDTO> getProgressForStudentAndCourse(UUID studentId, UUID courseId) {
-        return progressRepository.findByStudentIdAndCourseId(studentId, courseId)
-                .map(LearningProgressDTO::from);
+    @Transactional
+    public LearningProgressDTO getProgressForStudentAndCourse(UUID studentId, UUID courseId) {
+        LearningProgress progress = getOrCreate(studentId, courseId);
+        return LearningProgressDTO.from(progress);
     }
 
     @Transactional(readOnly = true)

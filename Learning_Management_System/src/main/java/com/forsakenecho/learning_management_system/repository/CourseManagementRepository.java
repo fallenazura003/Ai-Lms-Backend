@@ -1,5 +1,6 @@
 package com.forsakenecho.learning_management_system.repository;
 
+import com.forsakenecho.learning_management_system.dto.RevenueChartDTO; // Cần import DTO này
 import com.forsakenecho.learning_management_system.entity.CourseManagement;
 import com.forsakenecho.learning_management_system.enums.CourseAccessType;
 import org.springframework.data.domain.Page;
@@ -32,8 +33,6 @@ public interface CourseManagementRepository extends JpaRepository<CourseManageme
     long countDistinctCoursesSoldByTeacher(@Param("teacherId") UUID teacherId);
 
     // ✅ MỚI: Tính tổng doanh thu cho các khóa học của một giáo viên
-    // Giả định CourseManagement không lưu giá tại thời điểm mua, nên lấy giá hiện tại từ Course.
-    // LƯU Ý: Để chính xác, nên thêm priceAtPurchase vào CourseManagement.
     @Query("SELECT SUM(cm.course.price) FROM CourseManagement cm WHERE cm.course.creator.id = :teacherId AND cm.accessType = 'PURCHASED'")
     Double sumRevenueForTeacherCourses(@Param("teacherId") UUID teacherId);
 
@@ -46,4 +45,23 @@ public interface CourseManagementRepository extends JpaRepository<CourseManageme
     List<CourseManagement> findBuyersByCourseId(@Param("courseId") UUID courseId);
 
     List<CourseManagement> findByCourseIdAndAccessType(UUID courseId, CourseAccessType courseAccessType);
+
+    // ⭐ PHƯƠNG THỨC MỚI CHO BIỂU ĐỒ DOANH THU
+    /**
+     * Truy vấn dữ liệu doanh thu được nhóm theo tháng và năm của giao dịch.
+     * Sử dụng Constructor Expression để ánh xạ trực tiếp sang RevenueChartDTO.
+     * Sắp xếp từ cũ nhất đến mới nhất.
+     */
+    @Query("""
+        SELECT new com.forsakenecho.learning_management_system.dto.RevenueChartDTO(
+            YEAR(cm.purchasedAt),
+            MONTH(cm.purchasedAt),
+            SUM(cm.course.price)
+        )
+        FROM CourseManagement cm 
+        WHERE cm.course.creator.id = :teacherId AND cm.accessType = 'PURCHASED'
+        GROUP BY YEAR(cm.purchasedAt), MONTH(cm.purchasedAt)
+        ORDER BY YEAR(cm.purchasedAt) ASC, MONTH(cm.purchasedAt) ASC
+    """)
+    List<RevenueChartDTO> findMonthlyRevenueByTeacherId(@Param("teacherId") UUID teacherId);
 }

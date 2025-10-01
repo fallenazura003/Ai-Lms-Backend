@@ -3,6 +3,7 @@ package com.forsakenecho.learning_management_system.service;
 
 import com.forsakenecho.learning_management_system.dto.BuyerDto;
 import com.forsakenecho.learning_management_system.dto.PurchaseDetailDto;
+import com.forsakenecho.learning_management_system.dto.RevenueChartDTO;
 import com.forsakenecho.learning_management_system.dto.TeacherDashboardStats;
 import com.forsakenecho.learning_management_system.entity.CourseManagement;
 import com.forsakenecho.learning_management_system.repository.CourseManagementRepository;
@@ -66,5 +67,13 @@ public class TeacherService {
                         .purchaseDate(cm.getPurchasedAt())
                         .build())
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Lấy dữ liệu doanh thu được nhóm theo tháng/năm để hiển thị biểu đồ.
+     */
+    @Transactional(readOnly = true)
+    public List<RevenueChartDTO> getRevenueChartData(UUID teacherId) {
+        return courseManagementRepository.findMonthlyRevenueByTeacherId(teacherId);
     }
 }

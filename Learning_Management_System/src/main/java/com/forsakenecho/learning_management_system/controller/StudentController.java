@@ -60,7 +60,7 @@ public class StudentController {
     }
 
     // Mua khóa học
-    @Transactional // Đảm bảo giao dịch nguyên tử
+    @Transactional
     @PostMapping("/purchase")
     @PreAuthorize("hasRole('STUDENT')")
     public ResponseEntity<ApiResponse<PurchaseResponse>> purchaseCourse(
