@@ -65,10 +65,21 @@ public class AdminController {
     @GetMapping("/users")
     public ResponseEntity<?> getAllUsers(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "8") int size) {
+            @RequestParam(defaultValue = "8") int size,
+            @RequestParam(required = false) String search) { // ✅ Thêm tham số search
 
         Pageable pageable = PageRequest.of(page, size);
-        Page<User> userPage = userRepository.findByRoleInOrderByCreatedAtDesc(List.of("STUDENT", "TEACHER"), pageable);
+        Page<User> userPage;
+        List<String> searchableRoles = List.of("STUDENT", "TEACHER");
+
+        if (search != null && !search.trim().isEmpty()) {
+            // ✅ Sử dụng phương thức tìm kiếm mới nếu có từ khóa
+            userPage = userRepository.searchUsersByRoleAndTerm(searchableRoles, search.trim(), pageable);
+        } else {
+            // Trường hợp không có từ khóa tìm kiếm
+            userPage = userRepository.findByRoleInOrderByCreatedAtDesc(searchableRoles, pageable);
+        }
+
         return ResponseEntity.ok(userPage);
     }
 
@@ -129,9 +140,19 @@ public class AdminController {
     @GetMapping("/courses")
     public ResponseEntity<?> getAllCourses(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "8") int size) {
+            @RequestParam(defaultValue = "8") int size,
+            @RequestParam(required = false) String search) { // ✅ Thêm tham số search
         Pageable pageable = PageRequest.of(page, size);
-        Page<Course> coursePage = courseRepository.findAll(pageable);
+        Page<Course> coursePage;
+
+        if (search != null && !search.trim().isEmpty()) {
+            // ✅ Sử dụng phương thức tìm kiếm mới nếu có từ khóa
+            coursePage = courseRepository.searchCoursesByTerm(search.trim(), pageable);
+        } else {
+            // Trường hợp không có từ khóa tìm kiếm
+            coursePage = courseRepository.findAll(pageable);
+        }
+
         Page<CourseResponse> response = coursePage.map(CourseResponse::from);
         return ResponseEntity.ok(response);
     }
@@ -161,10 +182,20 @@ public class AdminController {
     @GetMapping("/logs")
     public ResponseEntity<?> getAllLogs(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String search) { // ✅ Thêm tham số search
 
         Pageable pageable = PageRequest.of(page, size);
-        Page<Event> logPage = eventRepository.findAllByOrderByTimestampDesc(pageable);
+        Page<Event> logPage;
+
+        if (search != null && !search.trim().isEmpty()) {
+            // ✅ Sử dụng phương thức tìm kiếm mới nếu có từ khóa
+            logPage = eventRepository.searchEventsByTerm(search.trim(), pageable);
+        } else {
+            // Trường hợp không có từ khóa tìm kiếm
+            logPage = eventRepository.findAllByOrderByTimestampDesc(pageable);
+        }
+
         return ResponseEntity.ok(logPage);
     }
 
