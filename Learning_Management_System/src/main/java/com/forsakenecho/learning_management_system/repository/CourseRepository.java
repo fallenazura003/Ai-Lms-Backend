@@ -22,23 +22,13 @@ public interface CourseRepository extends JpaRepository<Course, UUID>, JpaSpecif
 
     Page<Course> findByCreatorId(UUID userId, Pageable pageable);
 
-    // ✅ Phương thức findVisibleCoursesByKeyword này HIỆN TẠI KHÔNG CẦN THIẾT NỮA
-    // nếu bạn đã chuyển sang dùng Specification trong CourseService.
-    // Bạn có thể giữ nó nếu muốn giữ lại khả năng tìm kiếm cơ bản này ngoài Specification,
-    // nhưng để tránh nhầm lẫn, tôi sẽ chú thích nó.
-    // @Query("""
-    // SELECT c FROM Course c
-    // WHERE c.visible = true AND (
-    //     LOWER(c.title) LIKE %:keyword% OR
-    //     LOWER(c.description) LIKE %:keyword% OR
-    //     LOWER(c.creator.name) LIKE %:keyword%
-    // )
-    // """)
-    // Page<Course> findVisibleCoursesByKeyword(@Param("keyword") String keyword, Pageable pageable);
-
 
     // ✅ PHƯƠNG THỨC MỚI: Để lấy danh sách các danh mục duy nhất cho bộ lọc.
     // Điều này vẫn cần thiết vì Specification không có sẵn chức năng DISTINCT cho một trường cụ thể như thế này.
     @Query("SELECT DISTINCT c.category FROM Course c WHERE c.category IS NOT NULL AND c.category <> ''")
     List<String> findDistinctCategories();
+
+    // ✅ PHƯƠNG THỨC TÌM KIẾM MỚI CHO ADMIN (Tìm kiếm theo Title hoặc Description)
+    @Query("SELECT c FROM Course c WHERE LOWER(c.title) LIKE LOWER(CONCAT('%', :searchTerm, '%')) OR LOWER(c.description) LIKE LOWER(CONCAT('%', :searchTerm, '%'))")
+    Page<Course> searchCoursesByTerm(@Param("searchTerm") String searchTerm, Pageable pageable);
 }

@@ -23,7 +23,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.math.BigDecimal; // Keep BigDecimal for safe calculations
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -32,6 +33,14 @@ import java.util.UUID;
 @RequestMapping("/api/student")
 @RequiredArgsConstructor
 public class StudentController {
+
+    // --- CẤU HÌNH CHIẾT KHẤU & ADMIN ID ---
+    // 10% chiết khấu cho Admin (để duy trì hệ thống)
+    private static final BigDecimal ADMIN_COMMISSION_RATE = new BigDecimal("0.10");
+    private static final int DECIMAL_SCALE = 2; // Làm tròn đến 2 chữ số thập phân
+
+    // ID Cố định của Super Admin theo thông tin bạn cung cấp
+    private static final UUID SYSTEM_ADMIN_ID = UUID.fromString("08eebccd-8460-460a-b23d-3b731846feaf");
 
     private final CourseService courseService;
     private final CourseRepository courseRepository;
@@ -44,6 +53,12 @@ public class StudentController {
     // Helper method to get current user
     private User getCurrentUser(Authentication authentication) {
         return (User) authentication.getPrincipal();
+    }
+
+    // Helper method để tìm kiếm Admin BẰNG ID cố định
+    private User getSystemAdmin() {
+        return userRepository.findById(SYSTEM_ADMIN_ID)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Không tìm thấy tài khoản Admin hệ thống với ID cố định."));
     }
 
     // Lấy danh sách khóa học đã mua (KHÔNG CẦN LỌC THEO VISIBLE Ở ĐÂY, vì đã mua thì luôn thấy)
@@ -77,6 +92,10 @@ public class StudentController {
         if (teacher == null) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Không tìm thấy thông tin giáo viên cho khóa học này.");
         }
+
+        // Lấy tài khoản Admin hệ thống
+        User admin = getSystemAdmin();
+
 
         // ✅ Không cho mua khóa học bị ẩn
         if (!course.isVisible()) {
@@ -114,20 +133,35 @@ public class StudentController {
                         .build());
             }
 
-            // ✅ Trừ tiền sinh viên (balance là BigDecimal)
-            student.setBalance(studentBalanceBd.subtract(coursePriceBd));
-            userRepository.save(student); // ✅ LƯU TRẠNG THÁI MỚI CỦA STUDENT VÀO DB
+            // --- LOGIC CHIẾT KHẤU ---
+            // 1. Tính toán phần trăm chiết khấu cho Admin
+            BigDecimal adminShare = coursePriceBd.multiply(ADMIN_COMMISSION_RATE)
+                    .setScale(DECIMAL_SCALE, RoundingMode.HALF_UP);
 
-            // ✅ Cộng tiền cho giáo viên (balance là BigDecimal)
+            // 2. Tính toán phần tiền Giáo viên nhận được
+            BigDecimal teacherShare = coursePriceBd.subtract(adminShare);
+
+            // 3. Xử lý trừ tiền sinh viên (Trừ toàn bộ giá khóa học)
+            student.setBalance(studentBalanceBd.subtract(coursePriceBd));
+            userRepository.save(student);
+
+            // 4. Cộng tiền cho giáo viên (balance là BigDecimal)
             BigDecimal teacherBalanceBd = teacher.getBalance() != null ? teacher.getBalance() : BigDecimal.ZERO;
-            teacher.setBalance(teacherBalanceBd.add(coursePriceBd));
-            userRepository.save(teacher); // ✅ LƯU TRẠNG THÁI MỚI CỦA TEACHER VÀO DB
+            teacher.setBalance(teacherBalanceBd.add(teacherShare)); // Cộng phần tiền đã trừ chiết khấu
+            userRepository.save(teacher);
+
+            // 5. Cộng tiền cho Admin (balance là BigDecimal)
+            BigDecimal adminBalanceBd = admin.getBalance() != null ? admin.getBalance() : BigDecimal.ZERO;
+            admin.setBalance(adminBalanceBd.add(adminShare)); // Cộng phần chiết khấu
+            userRepository.save(admin);
+
+            // --- Ghi nhận giao dịch ---
 
             // ✅ Ghi nhận giao dịch của sinh viên (người trả tiền)
             transactionHistoryRepository.save(TransactionHistory.builder()
                     .user(student)
                     .type(TransactionType.PURCHASE)
-                    .amount(coursePriceBd)
+                    .amount(coursePriceBd.negate()) // Ghi nhận là chi tiêu (âm)
                     .description("Mua khóa học: " + course.getTitle())
                     .createdAt(LocalDateTime.now())
                     .build());
@@ -135,15 +169,24 @@ public class StudentController {
             // ✅ Ghi nhận giao dịch cho giáo viên (người nhận tiền)
             transactionHistoryRepository.save(TransactionHistory.builder()
                     .user(teacher)
-                    .type(TransactionType.PURCHASE) // Có thể cân nhắc thêm TransactionType.EARNINGS nếu muốn rõ ràng hơn
-                    .amount(coursePriceBd)
-                    .description("Nhận tiền từ khóa học: " + course.getTitle())
+                    .type(TransactionType.EARNINGS)
+                    .amount(teacherShare) // Chỉ ghi nhận phần tiền đã nhận
+                    .description("Thu nhập từ khóa học: " + course.getTitle() + " (sau chiết khấu)")
                     .createdAt(LocalDateTime.now())
                     .build());
 
+            // ✅ Ghi nhận giao dịch cho Admin (người nhận chiết khấu)
+            transactionHistoryRepository.save(TransactionHistory.builder()
+                    .user(admin)
+                    .type(TransactionType.COMMISSION)
+                    .amount(adminShare) // Chỉ ghi nhận phần chiết khấu
+                    .description("Chiết khấu hệ thống từ khóa học: " + course.getTitle() + " (" + ADMIN_COMMISSION_RATE.multiply(new BigDecimal("100")) + "%)")
+                    .createdAt(LocalDateTime.now())
+                    .build());
+
+
         } else {
             // Khóa học miễn phí, không cần trừ tiền hay tạo transaction cho việc trao đổi tiền
-            // Message toast sẽ khác
             PurchaseResponse purchaseResponse = PurchaseResponse.builder()
                     .studentId(student.getId())
                     .courseId(course.getId())
@@ -177,14 +220,15 @@ public class StudentController {
                 .balance(student.getBalance()) // ✅ TRẢ VỀ SỐ DƯ MỚI CỦA SINH VIÊN (chuyển BigDecimal về Double)
                 .build();
 
-        ApiResponse<PurchaseResponse> response = ApiResponse.<PurchaseResponse>builder()
+        ApiResponse<PurchaseResponse> response = ApiResponse.<ApiResponse<PurchaseResponse>>builder()
                 .message("Mua khóa học thành công!") // Message cho toast
-                .data(purchaseResponse)
                 .timestamp(LocalDateTime.now())
-                .build();
+                .build().getData();
 
+        // --- CẬP NHẬT LẠI THÔNG BÁO (NOTIFICATION) ---
+        // Thông báo đơn giản, không bao gồm số tiền chiết khấu
         notificationService.sendNotification(
-                teacher.getEmail(), // ✅ Lấy trực tiếp từ `teacher`
+                teacher.getEmail(),
                 student.getName() + " đã mua khóa học: " + course.getTitle(),
                 NotificationType.COURSE_PURCHASED
         );
