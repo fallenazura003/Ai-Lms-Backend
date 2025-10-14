@@ -1,22 +1,21 @@
-// TeacherController.java
 package com.forsakenecho.learning_management_system.controller;
 
 import com.forsakenecho.learning_management_system.dto.*;
+import com.forsakenecho.learning_management_system.entity.*;
 import com.forsakenecho.learning_management_system.enums.CourseCategory;
 import com.forsakenecho.learning_management_system.enums.NotificationType;
 import com.forsakenecho.learning_management_system.service.AiCourseGeneratorService;
 import com.forsakenecho.learning_management_system.service.FileStorageService;
 
-import com.forsakenecho.learning_management_system.entity.Course;
-import com.forsakenecho.learning_management_system.entity.CourseManagement;
-import com.forsakenecho.learning_management_system.entity.Event;
-import com.forsakenecho.learning_management_system.entity.User;
 import com.forsakenecho.learning_management_system.enums.CourseAccessType;
 
 import com.forsakenecho.learning_management_system.repository.CourseManagementRepository;
 import com.forsakenecho.learning_management_system.repository.CourseRepository;
 import com.forsakenecho.learning_management_system.repository.EventRepository;
+import com.forsakenecho.learning_management_system.repository.LearningProgressRepository; // ✅ Thêm LearningProgressRepository
+import com.forsakenecho.learning_management_system.repository.LessonRepository; // ✅ Thêm LessonRepository
 import com.forsakenecho.learning_management_system.service.CourseService;
+import com.forsakenecho.learning_management_system.service.LearningProgressService; // ✅ Thêm LearningProgressService
 
 
 import com.forsakenecho.learning_management_system.service.NotificationService;
@@ -37,19 +36,24 @@ import reactor.core.publisher.Mono;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.List; // Import List
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors; // Import Collectors
 
 
 @RestController
 @RequestMapping("/api/teacher")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('TEACHER')") // Đặt PreAuthorize ở cấp class để áp dụng cho tất cả methods
+@PreAuthorize("hasRole('TEACHER')")
 public class TeacherController {
 
     private final CourseService courseService;
     private final CourseRepository courseRepository;
     private final CourseManagementRepository courseManagementRepository;
+    private final LearningProgressRepository learningProgressRepository; // ✅ Inject
+    private final LessonRepository lessonRepository; // ✅ Inject
+    private final LearningProgressService learningProgressService; // ✅ Inject
     private final FileStorageService fileStorageService;
     private final AiCourseGeneratorService  aiCourseGeneratorService;
     private final EventRepository eventRepository;
@@ -64,12 +68,11 @@ public class TeacherController {
     @GetMapping("/courses")
     public ResponseEntity<Page<CourseResponse>> getCreatedCourses(
             Authentication authentication,
-            @RequestParam(value = "category", required = false) String category, // ✅ Thêm category
+            @RequestParam(value = "category", required = false) String category,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "8") int size) {
         User user = getCurrentUser(authentication);
         Pageable pageable = PageRequest.of(page, size);
-        // ✅ Gọi phương thức mới trong CourseService để lọc created courses
         Page<CourseResponse> response = courseService.getCreatedCoursesForTeacher(user.getId(), category, pageable);
         return ResponseEntity.ok(response);
     }
@@ -81,7 +84,7 @@ public class TeacherController {
             @RequestParam(value = "description", required = false) String description,
             @RequestParam(value = "price", required = false) Double price,
             @RequestParam(value = "category", required = false) CourseCategory category,
-            @RequestParam(value = "idea", required = false) String idea, // Được dùng khi sinh từ AI
+            @RequestParam(value = "idea", required = false) String idea,
             @RequestParam(value = "image", required = false) MultipartFile imageFile,
             @RequestPart(value = "imageUrl", required = false) String externalImageUrl,
             Authentication authentication
@@ -98,14 +101,10 @@ public class TeacherController {
 
         // Logic xử lý khi có idea (sinh từ AI)
         if (idea != null && !idea.trim().isEmpty()) {
-            // Đây là một ví dụ đơn giản. Trong thực tế, bạn có thể gọi
-            // aiCourseGeneratorService.generate(idea) để nhận đầy đủ thông tin
-            // và sử dụng thông tin đó để tạo Course.
-            // Nếu bạn muốn AI tự động tạo Course hoàn toàn, cân nhắc tách thành một endpoint riêng.
             title = title != null ? title : "Khóa học từ AI: " + idea;
             description = description != null ? description : "Mô tả được sinh từ AI cho ý tưởng: " + idea;
             price = price != null ? price : 0.0;
-            category = category != null ? category : CourseCategory.BUSINESS; // Cần một category mặc định hoặc từ AI
+            category = category != null ? category : CourseCategory.BUSINESS;
         }
 
         // Kiểm tra các trường bắt buộc sau khi xử lý AI
@@ -122,7 +121,7 @@ public class TeacherController {
                 .category(category)
                 .imageUrl(finalImageUrl)
                 .creator(teacher)
-                .visible(true) // Mặc định hiển thị khi tạo
+                .visible(true)
                 .build();
 
         courseRepository.save(course);
@@ -175,6 +174,61 @@ public class TeacherController {
         return ResponseEntity.ok(CourseResponse.from(course));
     }
 
+    // ENDPOINT MỚI: Lấy thống kê chi tiết của khóa học (StudentProgress)
+    @GetMapping("/courses/{courseId}/stats")
+    public ResponseEntity<CourseStatsResponse> getCourseStats(
+            @PathVariable UUID courseId,
+            Authentication authentication) {
+
+        User teacher = getCurrentUser(authentication);
+
+        // 1. Lấy thông tin cơ bản khóa học và tổng doanh thu
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Khóa học không tồn tại"));
+
+        // Giả định logic tính tổng doanh thu từ CourseService (hoặc Repository)
+        // Hiện tại không có logic này, nên tôi sẽ dùng giá trị giả định hoặc tính toán đơn giản:
+        Long totalRevenue = courseManagementRepository.countByCourseIdAndAccessType(courseId, CourseAccessType.PURCHASED) * course.getPrice().longValue();
+
+        // 2. Lấy tất cả CourseManagement (đã mua) và LearningProgress
+        List<CourseManagement> purchasedEnrollments = courseManagementRepository.findByCourseIdAndAccessType(courseId, CourseAccessType.PURCHASED);
+        List<UUID> studentIds = purchasedEnrollments.stream()
+                .map(cm -> cm.getUser().getId())
+                .collect(Collectors.toList());
+
+        List<LearningProgress> progressList = studentIds.isEmpty()
+                ? List.of()
+                : learningProgressRepository.findByCourseIdAndStudentIdIn(courseId, studentIds);
+
+        // 3. Lấy tổng số bài học
+        int totalLessons = lessonRepository.countByCourseId(courseId);
+
+        // Chuyển danh sách tiến độ thành Map để truy cập nhanh
+        Map<UUID, LearningProgress> progressMap = progressList.stream()
+                .collect(Collectors.toMap(lp -> lp.getStudent().getId(), lp -> lp));
+
+        // 4. Kết hợp dữ liệu (Mapping)
+        List<CourseStatsResponse.StudentProgress> studentProgressList = purchasedEnrollments.stream()
+                .map(cm -> {
+                    LearningProgress lp = progressMap.getOrDefault(cm.getUser().getId(), null);
+                    // Nếu không có tiến độ (lp == null), tạo một đối tượng LearningProgress rỗng
+                    if (lp == null) {
+                        lp = learningProgressService.getOrCreate(cm.getUser().getId(), courseId);
+                    }
+                    return CourseStatsResponse.StudentProgress.from(cm, lp, totalLessons);
+                })
+                .collect(Collectors.toList());
+
+        // 5. Xây dựng Response cuối cùng
+        CourseStatsResponse response = CourseStatsResponse.from(
+                course.getTitle(),
+                totalRevenue,
+                studentProgressList
+        );
+
+        return ResponseEntity.ok(response);
+    }
+
     // Endpoint cập nhật khóa học
     @PutMapping(value = "/courses/{courseId}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<CourseResponse> updateCourse(
@@ -200,7 +254,7 @@ public class TeacherController {
                 .timestamp(LocalDateTime.now())
                 .build());
 
-        // ✅ Gửi thông báo đến học sinh đã mua khóa học
+        // Gửi thông báo đến học sinh đã mua khóa học
         notificationService.sendNotificationToStudentsOfCourse(
                 updatedCourse.getId(),
                 "Khóa học " + updatedCourse.getTitle() + " vừa được cập nhật.",
@@ -228,7 +282,7 @@ public class TeacherController {
                 .timestamp(LocalDateTime.now())
                 .build());
 
-        // ✅ Gửi thông báo đến học sinh đã mua khóa học
+        // Gửi thông báo đến học sinh đã mua khóa học
         notificationService.sendNotificationToStudentsOfCourse(
                 courseId,
                 "Khóa học " + course.getTitle() + " đã bị xóa bởi giáo viên.",
