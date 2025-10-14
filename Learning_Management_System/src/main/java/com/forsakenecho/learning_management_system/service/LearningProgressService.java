@@ -27,7 +27,7 @@ public class LearningProgressService {
     private final UserRepository userRepository;
     private final LessonRepository lessonRepository;
 
-    private LearningProgress getOrCreate(UUID studentId, UUID courseId) {
+    public LearningProgress getOrCreate(UUID studentId, UUID courseId) {
         return progressRepository.findByStudentIdAndCourseId(studentId, courseId)
                 .orElseGet(() -> {
                     Course course = courseRepository.findById(courseId)

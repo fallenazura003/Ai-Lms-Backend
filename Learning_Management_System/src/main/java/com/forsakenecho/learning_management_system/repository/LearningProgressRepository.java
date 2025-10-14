@@ -11,4 +11,6 @@ public interface LearningProgressRepository extends JpaRepository<LearningProgre
     List<LearningProgress> findByStudentId(UUID studentId);
     Optional<LearningProgress> findByStudentIdAndCourseId(UUID studentId, UUID courseId);
     boolean existsByStudentIdAndCourseId(UUID studentId, UUID courseId);
+
+    List<LearningProgress> findByCourseIdAndStudentIdIn(UUID courseId, List<UUID> studentIds);
 }
